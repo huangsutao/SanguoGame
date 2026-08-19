@@ -10,7 +10,23 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+.vite
+.cache
+coverage
+*.tsbuildinfo
 *.local
+.env.local
+.env.*.local
+.npm
+.eslintcache
+.stylelintcache
+.turbo
+
+# Vite 脚手架残留（未使用）
+src/assets/hero.png
+src/assets/vite.svg
+src/assets/typescript.svg
+public/icons.svg
 
 # Editor directories and files
 .vscode/*

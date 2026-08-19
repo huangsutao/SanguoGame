@@ -361,3 +361,25 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Vue / Vite (web/)
+web/node_modules/
+web/dist/
+web/dist-ssr/
+web/.vite/
+web/**/.vite/
+web/.cache/
+web/coverage/
+web/*.tsbuildinfo
+web/.env.local
+web/.env.*.local
+web/.npm
+web/.eslintcache
+web/.stylelintcache
+web/.turbo
+
+# Vite 脚手架残留（未使用）
+web/src/assets/hero.png
+web/src/assets/vite.svg
+web/src/assets/typescript.svg
+web/public/icons.svg

@@ -1,16 +1,22 @@
+using System.Text.Json.Serialization;
+
 namespace SanguoGame.Server.Contracts;
 
 public abstract record ApiResultBase
 {
+    [JsonPropertyOrder(0)]
     public int Code { get; init; }
 
+    [JsonPropertyOrder(1)]
     public string Message { get; init; } = "ok";
 
+    [JsonPropertyOrder(3)]
     public string? TraceId { get; set; }
 }
 
 public sealed record ApiResult<T> : ApiResultBase
 {
+    [JsonPropertyOrder(2)]
     public T? Data { get; init; }
 }
 

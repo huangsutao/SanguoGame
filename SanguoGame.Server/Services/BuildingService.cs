@@ -35,120 +35,158 @@ public sealed class BuildingService
         var def = InnerBuildingCatalog.Find(buildingType)
             ?? throw new BizException(ErrorCodes.ValidationFailed, "未知建筑类型");
 
+        await StartUpgradeAsync(accountId, def, cancellationToken);
+        return await GetOverviewAsync(accountId, cancellationToken);
+    }
+
+    public async Task StartUpgradeAsync(
+        long accountId,
+        InnerBuildingDef def,
+        CancellationToken cancellationToken)
+    {
         var city = await RequireCityAsync(accountId, cancellationToken);
-        var rows = await _orm.Select<BuildingEntity>()
-            .Where(b => b.CityId == city.Id)
-            .ToListAsync(cancellationToken);
-        var byType = rows.ToDictionary(b => b.Type, StringComparer.OrdinalIgnoreCase);
-
-        if (rows.Any(b => b.Status == BuildingStatus.Upgrading))
+        var planned = await CityRowLock.RunAsync(_orm, city.Id, async (transaction, lockedCity, ct) =>
         {
-            throw new BizException(ErrorCodes.BuildingQueueBusy, "本城正在建造或升级");
-        }
+            var rows = await _orm.Select<BuildingEntity>()
+                .WithTransaction(transaction)
+                .Where(b => b.CityId == lockedCity.Id)
+                .ToListAsync(ct);
+            var byType = rows.ToDictionary(b => b.Type, StringComparer.OrdinalIgnoreCase);
 
-        byType.TryGetValue(def.Type, out var entity);
-        var level = entity?.Level ?? 0;
-        if (level >= def.MaxLevel)
-        {
-            throw new BizException(ErrorCodes.BuildingMaxLevel, "建筑已满级");
-        }
-
-        var palaceLevel = byType.TryGetValue("palace", out var palace) ? palace.Level : 0;
-        if (palaceLevel < def.RequirePalaceLevel)
-        {
-            throw new BizException(ErrorCodes.BuildingPrerequisite, $"需要主殿 {def.RequirePalaceLevel} 级");
-        }
-
-        var targetLevel = level + 1;
-        var cost = InnerBuildingCatalog.CostToReach(def, targetLevel);
-        var stock = ToAmount(city);
-        var missing = stock.FirstMissingAgainst(cost);
-        if (missing is not null)
-        {
-            throw new BizException(ErrorCodes.InsufficientResources, $"资源不足（缺{missing}）");
-        }
-
-        var now = DateTime.UtcNow;
-        var finishAt = now.AddSeconds(InnerBuildingCatalog.DurationSeconds(def, targetLevel));
-        var remain = stock.Subtract(cost);
-        city.Grain = remain.Grain;
-        city.Wood = remain.Wood;
-        city.Iron = remain.Iron;
-        city.Copper = remain.Copper;
-
-        if (entity is null)
-        {
-            entity = new BuildingEntity
+            if (rows.Any(b => b.Status == BuildingStatus.Upgrading))
             {
-                CityId = city.Id,
-                Type = def.Type,
-                Level = 0,
-                Status = BuildingStatus.Upgrading,
-                TargetLevel = targetLevel,
-                FinishAt = finishAt,
-                UpdatedAt = now
-            };
-        }
-        else
-        {
-            entity.Status = BuildingStatus.Upgrading;
-            entity.TargetLevel = targetLevel;
-            entity.FinishAt = finishAt;
-            entity.UpdatedAt = now;
-        }
+                throw new BizException(ErrorCodes.BuildingQueueBusy, "本城正在建造或升级");
+            }
 
-        try
-        {
-            await _orm.Update<CityEntity>()
-                .SetSource(city)
-                .UpdateColumns(c => new { c.Grain, c.Wood, c.Iron, c.Copper })
-                .ExecuteAffrowsAsync(cancellationToken);
-
-            if (entity.Id == 0)
+            byType.TryGetValue(def.Type, out var entity);
+            var level = entity?.Level ?? 0;
+            if (level >= def.MaxLevel)
             {
-                entity.Id = await _orm.Insert(entity).ExecuteIdentityAsync(cancellationToken);
+                throw new BizException(ErrorCodes.BuildingMaxLevel, "建筑已满级");
+            }
+
+            var palaceLevel = byType.TryGetValue("palace", out var palace) ? palace.Level : 0;
+            if (palaceLevel < def.RequirePalaceLevel)
+            {
+                throw new BizException(ErrorCodes.BuildingPrerequisite, $"需要主殿 {def.RequirePalaceLevel} 级");
+            }
+
+            var targetLevel = level + 1;
+            var cost = InnerBuildingCatalog.CostToReach(def, targetLevel);
+            var stock = ToAmount(lockedCity);
+            var missing = stock.FirstMissingAgainst(cost);
+            if (missing is not null)
+            {
+                throw new BizException(ErrorCodes.InsufficientResources, $"资源不足（缺{missing}）");
+            }
+
+            var now = DateTime.UtcNow;
+            var plannedFinish = now.AddSeconds(InnerBuildingCatalog.DurationSeconds(def, targetLevel));
+            var remain = stock.Subtract(cost);
+            lockedCity.Grain = remain.Grain;
+            lockedCity.Wood = remain.Wood;
+            lockedCity.Iron = remain.Iron;
+            lockedCity.Copper = remain.Copper;
+
+            if (entity is null)
+            {
+                entity = new BuildingEntity
+                {
+                    CityId = lockedCity.Id,
+                    Type = def.Type,
+                    Level = 0,
+                    Status = BuildingStatus.Upgrading,
+                    TargetLevel = targetLevel,
+                    FinishAt = plannedFinish,
+                    UpdatedAt = now
+                };
             }
             else
             {
-                await _orm.Update<BuildingEntity>().SetSource(entity).ExecuteAffrowsAsync(cancellationToken);
+                entity.Status = BuildingStatus.Upgrading;
+                entity.TargetLevel = targetLevel;
+                entity.FinishAt = plannedFinish;
+                entity.UpdatedAt = now;
             }
-        }
-        catch (Exception ex) when (DbErrors.IsUniqueViolation(ex))
-        {
-            throw new BizException(ErrorCodes.BuildingQueueBusy, "本城正在建造或升级");
-        }
 
+            try
+            {
+                await _orm.Update<CityEntity>()
+                    .WithTransaction(transaction)
+                    .SetSource(lockedCity)
+                    .UpdateColumns(c => new { c.Grain, c.Wood, c.Iron, c.Copper })
+                    .ExecuteAffrowsAsync(ct);
+
+                if (entity.Id == 0)
+                {
+                    entity.Id = await _orm.Insert(entity).WithTransaction(transaction).ExecuteIdentityAsync(ct);
+                }
+                else
+                {
+                    await _orm.Update<BuildingEntity>()
+                        .WithTransaction(transaction)
+                        .SetSource(entity)
+                        .ExecuteAffrowsAsync(ct);
+                }
+            }
+            catch (Exception ex) when (DbErrors.IsUniqueViolation(ex))
+            {
+                throw new BizException(ErrorCodes.BuildingQueueBusy, "本城正在建造或升级");
+            }
+
+            return (def.Type, targetLevel, plannedFinish);
+        }, cancellationToken);
+
+        var buildingType = planned.Item1;
+        var targetLevel = planned.Item2;
+        var finishAt = planned.Item3;
         _jobs.Schedule<CompleteInnerBuildingJob>(
-            job => job.Execute(city.Id, def.Type, targetLevel),
+            job => job.Execute(city.Id, buildingType, targetLevel),
             new DateTimeOffset(DateTime.SpecifyKind(finishAt, DateTimeKind.Utc)));
-
-        return await BuildOverviewAsync(city, cancellationToken);
     }
 
     public async Task CompleteAsync(long cityId, string buildingType, int targetLevel, CancellationToken cancellationToken)
     {
-        var entity = await _orm.Select<BuildingEntity>()
-            .Where(b => b.CityId == cityId && b.Type == buildingType)
-            .FirstAsync(cancellationToken);
+        BuildingEntity? entity;
+        CityEntity city;
+        try
+        {
+            (entity, city) = await CityRowLock.RunAsync(_orm, cityId, async (transaction, lockedCity, ct) =>
+            {
+                var row = await _orm.Select<BuildingEntity>()
+                    .WithTransaction(transaction)
+                    .Where(b => b.CityId == cityId && b.Type == buildingType)
+                    .FirstAsync(ct);
+                if (row is null || row.Level >= targetLevel || row.Status != BuildingStatus.Upgrading)
+                {
+                    return ((BuildingEntity?)null, lockedCity);
+                }
+
+                var now = DateTime.UtcNow;
+                row.Level = targetLevel;
+                row.Status = BuildingStatus.Idle;
+                row.TargetLevel = null;
+                row.FinishAt = null;
+                row.UpdatedAt = now;
+                if (OuterFieldCatalog.IsField(buildingType) && row.LastCollectedAt is null && targetLevel >= 1)
+                {
+                    row.LastCollectedAt = now;
+                }
+
+                await _orm.Update<BuildingEntity>()
+                    .WithTransaction(transaction)
+                    .SetSource(row)
+                    .ExecuteAffrowsAsync(ct);
+
+                return (row, lockedCity);
+            }, cancellationToken);
+        }
+        catch (BizException ex) when (ex.Code == ErrorCodes.NotFound)
+        {
+            return;
+        }
+
         if (entity is null)
-        {
-            return;
-        }
-
-        if (entity.Level >= targetLevel || entity.Status != BuildingStatus.Upgrading)
-        {
-            return;
-        }
-
-        entity.Level = targetLevel;
-        entity.Status = BuildingStatus.Idle;
-        entity.TargetLevel = null;
-        entity.FinishAt = null;
-        entity.UpdatedAt = DateTime.UtcNow;
-        await _orm.Update<BuildingEntity>().SetSource(entity).ExecuteAffrowsAsync(cancellationToken);
-
-        var city = await _orm.Select<CityEntity>().Where(c => c.Id == cityId).FirstAsync(cancellationToken);
-        if (city is null)
         {
             return;
         }

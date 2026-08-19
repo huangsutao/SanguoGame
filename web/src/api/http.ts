@@ -20,6 +20,15 @@ export async function request<T>(
   url: string,
   body?: unknown
 ): Promise<T> {
+  const result = await requestEnvelope<T>(method, url, body);
+  return result.data as T;
+}
+
+export async function requestEnvelope<T>(
+  method: "get" | "post",
+  url: string,
+  body?: unknown
+): Promise<{ data: T; message: string }> {
   try {
     const response = await http.request<ApiEnvelope<T>>({
       method,
@@ -30,7 +39,7 @@ export async function request<T>(
     if (envelope.code !== 0) {
       throw new ApiError(envelope.code, envelope.message || "请求失败");
     }
-    return envelope.data as T;
+    return { data: envelope.data as T, message: envelope.message || "ok" };
   } catch (error) {
     if (error instanceof ApiError) {
       throw error;

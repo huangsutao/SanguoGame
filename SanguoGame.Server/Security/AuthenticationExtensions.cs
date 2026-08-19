@@ -94,6 +94,7 @@ internal static class AuthenticationExtensions
         services.AddScoped<CharacterService>();
         services.AddScoped<CityService>();
         services.AddScoped<BuildingService>();
+        services.AddScoped<FieldService>();
         return services;
     }
 

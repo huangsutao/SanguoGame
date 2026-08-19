@@ -98,3 +98,38 @@ export interface BuildingsOverviewDto {
   queue?: BuildingQueueDto;
   buildings: BuildingItemDto[];
 }
+
+export interface FieldItemDto {
+  type: string;
+  name: string;
+  resource: string;
+  level: number;
+  maxLevel: number;
+  status: "idle" | "upgrading";
+  targetLevel?: number;
+  finishAt?: string;
+  ratePerHour: number;
+  fieldCap: number;
+  pending: number;
+  lastCollectedAt?: string;
+  next?: BuildingCostDto;
+  blockedReason?: string;
+}
+
+export interface FieldsOverviewDto {
+  cityId: number;
+  serverTime: string;
+  resources: ResourceDto;
+  resourceCap: number;
+  queue?: BuildingQueueDto;
+  fields: FieldItemDto[];
+}
+
+export interface FieldsCollectDto {
+  cityId: number;
+  serverTime: string;
+  resources: ResourceDto;
+  resourceCap: number;
+  collected: ResourceDto;
+  fields: FieldItemDto[];
+}

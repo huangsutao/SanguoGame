@@ -159,3 +159,9 @@ input {
   color: #9a8f7c;
   font-size: 0.85rem;
 }
+
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}

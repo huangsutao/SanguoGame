@@ -28,6 +28,9 @@ public sealed class BuildingEntity
     [Column(Name = "finish_at")]
     public DateTime? FinishAt { get; set; }
 
+    [Column(Name = "last_collected_at")]
+    public DateTime? LastCollectedAt { get; set; }
+
     [Column(Name = "updated_at", IsNullable = false)]
     public DateTime UpdatedAt { get; set; }
 }

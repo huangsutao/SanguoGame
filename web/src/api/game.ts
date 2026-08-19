@@ -1,8 +1,10 @@
-import { request } from "./http";
+import { request, requestEnvelope } from "./http";
 import type {
   BuildingsOverviewDto,
   CharacterResponse,
   CityResponse,
+  FieldsCollectDto,
+  FieldsOverviewDto,
   SessionResponse,
   TokenResponse
 } from "./types";
@@ -37,4 +39,16 @@ export function fetchBuildings(): Promise<BuildingsOverviewDto> {
 
 export function upgradeBuilding(buildingType: string): Promise<BuildingsOverviewDto> {
   return request<BuildingsOverviewDto>("post", "/api/buildings/upgrade", { buildingType });
+}
+
+export function fetchFields(): Promise<FieldsOverviewDto> {
+  return request<FieldsOverviewDto>("get", "/api/fields");
+}
+
+export function upgradeField(fieldType: string): Promise<FieldsOverviewDto> {
+  return request<FieldsOverviewDto>("post", "/api/fields/upgrade", { fieldType });
+}
+
+export function collectFields(fieldType?: string): Promise<{ data: FieldsCollectDto; message: string }> {
+  return requestEnvelope<FieldsCollectDto>("post", "/api/fields/collect", fieldType ? { fieldType } : {});
 }

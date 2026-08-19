@@ -1,27 +1,32 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import {
+  collectFields,
   createCharacter,
   fetchBuildings,
+  fetchFields,
   fetchSession,
   foundCity,
   login,
   logout,
   register,
-  upgradeBuilding
+  upgradeBuilding,
+  upgradeField
 } from "./api/game";
 import { createGameHub } from "./api/hub";
 import { ApiError } from "./api/types";
-import type { BuildingsOverviewDto, SessionResponse } from "./api/types";
+import type { BuildingsOverviewDto, FieldsOverviewDto, SessionResponse } from "./api/types";
 import { clearTokens, getAccessToken, getRefreshToken, saveTokens } from "./session";
 import type { HubConnection } from "@microsoft/signalr";
 
 const loading = ref(true);
 const busy = ref(false);
 const error = ref("");
+const notice = ref("");
 const mode = ref<"login" | "register">("login");
 const session = ref<SessionResponse | null>(null);
 const overview = ref<BuildingsOverviewDto | null>(null);
+const fields = ref<FieldsOverviewDto | null>(null);
 const nowMs = ref(Date.now());
 
 const username = ref("");
@@ -31,12 +36,31 @@ const characterName = ref("");
 const loggedIn = computed(() => session.value !== null);
 const hasCharacter = computed(() => Boolean(session.value?.character));
 const hasCity = computed(() => Boolean(session.value?.city));
+const queue = computed(() => overview.value?.queue ?? fields.value?.queue);
+
+const resourceLabel: Record<string, string> = {
+  grain: "粮",
+  wood: "木",
+  iron: "铁",
+  copper: "铜"
+};
 
 let hub: HubConnection | null = null;
 let tick: number | undefined;
 
 function fail(err: unknown): void {
   error.value = err instanceof ApiError || err instanceof Error ? err.message : "操作失败";
+}
+
+function queueName(type?: string): string {
+  if (!type) {
+    return "";
+  }
+  return (
+    overview.value?.buildings.find((item) => item.type === type)?.name ??
+    fields.value?.fields.find((item) => item.type === type)?.name ??
+    type
+  );
 }
 
 function remainText(finishAt?: string): string {
@@ -68,15 +92,17 @@ function blockedText(reason?: string): string {
   }
 }
 
-async function loadBuildings(): Promise<void> {
-  overview.value = await fetchBuildings();
+async function loadCity(): Promise<void> {
+  const [inner, outer] = await Promise.all([fetchBuildings(), fetchFields()]);
+  overview.value = inner;
+  fields.value = outer;
 }
 
 async function connectHub(): Promise<void> {
   await disconnectHub();
   hub = createGameHub();
   hub.on("BuildComplete", () => {
-    void loadBuildings();
+    void loadCity();
   });
   await hub.start();
 }
@@ -119,11 +145,12 @@ onUnmounted(() => {
 watch(hasCity, async (ready) => {
   if (!ready) {
     overview.value = null;
+    fields.value = null;
     await disconnectHub();
     return;
   }
   try {
-    await loadBuildings();
+    await loadCity();
     await connectHub();
   } catch (err) {
     fail(err);
@@ -132,6 +159,7 @@ watch(hasCity, async (ready) => {
 
 async function submitAuth(): Promise<void> {
   error.value = "";
+  notice.value = "";
   busy.value = true;
   try {
     const tokens =
@@ -183,9 +211,52 @@ async function submitFoundCity(): Promise<void> {
 
 async function submitUpgrade(type: string): Promise<void> {
   error.value = "";
+  notice.value = "";
   busy.value = true;
   try {
     overview.value = await upgradeBuilding(type);
+    fields.value = await fetchFields();
+  } catch (err) {
+    fail(err);
+  } finally {
+    busy.value = false;
+  }
+}
+
+async function submitFieldUpgrade(type: string): Promise<void> {
+  error.value = "";
+  notice.value = "";
+  busy.value = true;
+  try {
+    fields.value = await upgradeField(type);
+    overview.value = await fetchBuildings();
+  } catch (err) {
+    fail(err);
+  } finally {
+    busy.value = false;
+  }
+}
+
+async function submitCollect(type?: string): Promise<void> {
+  error.value = "";
+  notice.value = "";
+  busy.value = true;
+  try {
+    const result = await collectFields(type);
+    fields.value = {
+      cityId: result.data.cityId,
+      serverTime: result.data.serverTime,
+      resources: result.data.resources,
+      resourceCap: result.data.resourceCap,
+      queue: fields.value?.queue,
+      fields: result.data.fields
+    };
+    if (overview.value) {
+      overview.value = { ...overview.value, resources: result.data.resources, resourceCap: result.data.resourceCap };
+    }
+    if (result.message && result.message !== "ok") {
+      notice.value = result.message;
+    }
   } catch (err) {
     fail(err);
   } finally {
@@ -207,6 +278,7 @@ async function submitLogout(): Promise<void> {
     clearTokens();
     session.value = null;
     overview.value = null;
+    fields.value = null;
     password.value = "";
   }
 }
@@ -216,13 +288,14 @@ async function submitLogout(): Promise<void> {
   <main class="page" :class="{ wide: hasCity }">
     <header class="header">
       <h1>战国</h1>
-      <p class="sub">账号 · 角色 · 建城 · 城内</p>
+      <p class="sub">账号 · 角色 · 建城 · 城内 · 城外</p>
     </header>
 
     <p v-if="loading" class="hint">加载中…</p>
 
     <section v-else class="card">
       <p v-if="error" class="error">{{ error }}</p>
+      <p v-else-if="notice" class="hint">{{ notice }}</p>
 
       <form v-if="!loggedIn" class="form" @submit.prevent="submitAuth">
         <div class="tabs">
@@ -286,9 +359,9 @@ async function submitLogout(): Promise<void> {
             {{ overview.resources.copper }}
             （上限 {{ overview.resourceCap }}，人口上限 {{ overview.populationCap }}）
           </p>
-          <p v-if="overview.queue" class="hint">
-            建造中：{{ overview.queue.buildingType }} → {{ overview.queue.targetLevel }} 级，剩余
-            {{ remainText(overview.queue.finishAt) }}
+          <p v-if="queue" class="hint">
+            建造中：{{ queueName(queue.buildingType) }} → {{ queue.targetLevel }} 级，剩余
+            {{ remainText(queue.finishAt) }}
           </p>
           <ul class="buildings">
             <li v-for="item in overview.buildings" :key="item.type">
@@ -309,6 +382,48 @@ async function submitLogout(): Promise<void> {
               >
                 {{ item.level === 0 ? "建造" : "升级" }}
               </button>
+            </li>
+          </ul>
+        </section>
+
+        <section v-if="fields" class="block">
+          <h2>城外</h2>
+          <p class="res">
+            可收取：良田 {{ fields.fields.find((f) => f.type === "farm")?.pending ?? 0 }} 粮 / 木场
+            {{ fields.fields.find((f) => f.type === "lumber")?.pending ?? 0 }} 木 / 铁矿
+            {{ fields.fields.find((f) => f.type === "ironMine")?.pending ?? 0 }} 铁 / 铜矿
+            {{ fields.fields.find((f) => f.type === "copperMine")?.pending ?? 0 }} 铜
+          </p>
+          <p class="hint">主殿生效 1 级后可建；产出按上次收取时间现算，点收取才入库。</p>
+          <p>
+            <button type="button" :disabled="busy" @click="submitCollect()">一键收取</button>
+          </p>
+          <ul class="buildings">
+            <li v-for="item in fields.fields" :key="item.type">
+              <div>
+                <strong>{{ item.name }}</strong>
+                <span class="meta">{{ item.level }} / {{ item.maxLevel }} 级</span>
+                <span class="meta">{{ item.pending }} / {{ item.fieldCap }} {{ resourceLabel[item.resource] }}</span>
+                <span v-if="item.level >= 1" class="hint"> {{ item.ratePerHour }}/时 </span>
+                <span v-if="item.status === 'upgrading'" class="hint">
+                  升级中 {{ remainText(item.finishAt) }}
+                </span>
+                <span v-else-if="blockedText(item.blockedReason)" class="hint">{{
+                  blockedText(item.blockedReason)
+                }}</span>
+              </div>
+              <div class="actions">
+                <button type="button" :disabled="busy || item.level < 1" @click="submitCollect(item.type)">
+                  收取
+                </button>
+                <button
+                  type="button"
+                  :disabled="busy || item.status === 'upgrading' || Boolean(item.blockedReason)"
+                  @click="submitFieldUpgrade(item.type)"
+                >
+                  {{ item.level === 0 ? "建造" : "升级" }}
+                </button>
+              </div>
             </li>
           </ul>
         </section>

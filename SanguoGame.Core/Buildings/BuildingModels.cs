@@ -44,6 +44,24 @@ public sealed record ResourceAmount(int Grain, int Wood, int Iron, int Copper)
 
     public ResourceAmount Subtract(ResourceAmount cost) =>
         new(Grain - cost.Grain, Wood - cost.Wood, Iron - cost.Iron, Copper - cost.Copper);
+
+    public int Get(string resource) => resource switch
+    {
+        "grain" => Grain,
+        "wood" => Wood,
+        "iron" => Iron,
+        "copper" => Copper,
+        _ => throw new ArgumentOutOfRangeException(nameof(resource), resource, "未知资源")
+    };
+
+    public ResourceAmount Add(string resource, int delta) => resource switch
+    {
+        "grain" => this with { Grain = Grain + delta },
+        "wood" => this with { Wood = Wood + delta },
+        "iron" => this with { Iron = Iron + delta },
+        "copper" => this with { Copper = Copper + delta },
+        _ => throw new ArgumentOutOfRangeException(nameof(resource), resource, "未知资源")
+    };
 }
 
 public sealed record InnerBuildingDef(

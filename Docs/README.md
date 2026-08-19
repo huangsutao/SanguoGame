@@ -21,7 +21,7 @@
 | [design-world-map.md](design-world-map.md) | 大地图格子、据点、视野加载 | 撰写中 |
 | [design-inner-city.md](design-inner-city.md) | 城内内政 / 科技 / 军事建筑 | 已定稿 |
 | [design-city-wall.md](design-city-wall.md) | 城墙与城防建筑 | 待撰写 |
-| [design-outer-resources.md](design-outer-resources.md) | 城外矿、木、田与产出 | 待撰写 |
+| [design-outer-resources.md](design-outer-resources.md) | 城外矿、木、田与产出 | 已定稿 |
 | [design-march-battle.md](design-march-battle.md) | 行军、到达结算、战报 | 待撰写 |
 | [design-pvp.md](design-pvp.md) | 打玩家、掠夺、保护 CD | 待撰写 |
 | [design-ai.md](design-ai.md) | AI 玩家决策与 tick | 待撰写 |

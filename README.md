@@ -120,7 +120,7 @@ SanguoGame/
 | 大地图与 NPC 据点 | [Docs/design-world-map.md](Docs/design-world-map.md) | 撰写中 |
 | 城内建筑（内政 / 科技 / 军事） | [Docs/design-inner-city.md](Docs/design-inner-city.md) | 已定稿 |
 | 城墙与城防 | [Docs/design-city-wall.md](Docs/design-city-wall.md) | 待撰写 |
-| 城外资源田 | [Docs/design-outer-resources.md](Docs/design-outer-resources.md) | 待撰写 |
+| 城外资源田 | [Docs/design-outer-resources.md](Docs/design-outer-resources.md) | 已定稿 |
 | 行军与战斗结算 | [Docs/design-march-battle.md](Docs/design-march-battle.md) | 待撰写 |
 | 玩家对战与掠夺 | [Docs/design-pvp.md](Docs/design-pvp.md) | 待撰写 |
 | AI 玩家 | [Docs/design-ai.md](Docs/design-ai.md) | 待撰写 |

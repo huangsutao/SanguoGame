@@ -74,7 +74,7 @@ _Exported on 8/19/2026 at 18:46:22 GMT+8 from Cursor (3.16.29)_
 |----|------|
 | API | ASP.NET Core Web API（.NET 8/9） |
 | 实时推送 | SignalR |
-| 数据 | PostgreSQL 或 SQL Server（玩家、城池、建筑、行军） |
+| 数据 | FreeSql + PostgreSQL 或 SQL Server（玩家、城池、建筑、行军） |
 | 缓存 | Redis（在线、锁、地图热点、防连点） |
 | 定时任务 | Hangfire / Quartz.NET / .NET `IHostedService` |
 | 认证 | JWT + Refresh Token |
@@ -98,7 +98,7 @@ _Exported on 8/19/2026 at 18:46:22 GMT+8 from Cursor (3.16.29)_
 3. **Hangfire**  
    建造 30 分钟完成、部队 10 分钟到达，都做成延迟任务，到点结算。比自己写死循环可靠。
 
-4. **EF Core**  
+4. **FreeSql**  
    城、建筑、科技、部队、行军队列的持久化。
 
 ### 开源参考（可学架构，不要指望开箱即玩）
@@ -179,7 +179,7 @@ _Exported on 8/19/2026 at 18:46:22 GMT+8 from Cursor (3.16.29)_
 
 - ASP.NET Core 8 Web API
 - SignalR
-- EF Core + PostgreSQL
+- FreeSql + PostgreSQL
 - Redis
 - Hangfire（建造/行军到点）
 
@@ -211,7 +211,7 @@ _Exported on 8/19/2026 at 18:46:22 GMT+8 from Cursor (3.16.29)_
 
 ---
 
-**结论：** 网页端用 Vue/React + Canvas/PixiJS；服务端用 **.NET 完全合适**，第一版用 **ASP.NET Core + SignalR + Hangfire + PostgreSQL + Redis** 即可。没有现成“战国引擎”，但有现成的网游后端框架。玩法是 **指令 + 定时结算**，不要做成实时 RTS。
+**结论：** 网页端用 Vue/React + Canvas/PixiJS；服务端用 **.NET 完全合适**，第一版用 **ASP.NET Core + SignalR + Hangfire + FreeSql + PostgreSQL + Redis** 即可。没有现成“战国引擎”，但有现成的网游后端框架。玩法是 **指令 + 定时结算**，不要做成实时 RTS。
 
 如果你愿意，我可以下一步按“第一版最小可玩”帮你列：数据库表结构、主要 API，以及城内/城墙/城外的建筑清单。当前是 Ask 模式，我只能给方案；若要直接在项目里搭骨架，需要切换到 Agent 模式。
 
@@ -238,7 +238,7 @@ _Exported on 8/19/2026 at 18:46:22 GMT+8 from Cursor (3.16.29)_
 - 登录、建城、升级、出兵等 HTTP 接口
 - SignalR Hub（建造完成、被打、行军到达）
 - Hangfire / 后台服务（到点结算）
-- EF Core + 数据库
+- FreeSql + 数据库
 - `wwwroot` 里放前端打包结果（或先不管前端）
 
 对验证玩法来说，这样最省事：一个解决方案、一个进程、一套配置，本地 `F5` 就能跑。
@@ -256,7 +256,7 @@ WarringStates.sln
 ├── src/
 │   ├── Game.Api          ← ASP.NET Core（接口 + SignalR + 启动）
 │   ├── Game.Core         ← 规则：建造、战斗、行军、资源结算（纯逻辑）
-│   ├── Game.Infrastructure ← EF Core、Redis、Hangfire
+│   ├── Game.Infrastructure ← FreeSql、Redis、Hangfire
 │   └── Game.Shared       ← 前后端共用的 DTO（可选）
 └── web/                  ← Vue/React 前端（独立 npm 项目，不是 .csproj）
 ```

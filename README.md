@@ -10,8 +10,9 @@
 |------|------|
 | 服务端骨架 | Server / Core / Infrastructure 已拆；统一 JSON 信封、CORS、`/hubs/game` 空壳 |
 | 探活接口 | `GET /api/system/ping` |
+| 账号 / 建城 | 注册登录、JWT、创角、随机空地建主城已落地（需 PostgreSQL） |
 | 网页端 | 尚未创建，规划为独立 Vue 3 工程 |
-| 玩法系统（建城、建筑、行军等） | 未实现，设计见 [Docs](Docs/README.md) |
+| 其余玩法 | 未实现，顺序见 [路线图](Docs/design-roadmap.md) |
 
 ## 仓库结构
 
@@ -22,7 +23,7 @@ SanguoGame/
 ├── SanguoGame.sln                 # 服务端解决方案
 ├── SanguoGame.Server/             # API + SignalR + 进程启动
 ├── SanguoGame.Core/               # 错误码、业务异常；后续纯规则
-├── SanguoGame.Infrastructure/     # 后续 FreeSql、Redis、Hangfire
+├── SanguoGame.Infrastructure/     # FreeSql + PostgreSQL；后续 Redis、Hangfire
 └── web/                           # Vue 3 独立前端（尚未创建，npm，不是 .csproj）
 ```
 
@@ -113,8 +114,8 @@ SanguoGame/
 | 开发路线图（先做什么） | [Docs/design-roadmap.md](Docs/design-roadmap.md) | 已定稿 |
 | 总体架构与技术选型 | [Docs/design-architecture.md](Docs/design-architecture.md) | 撰写中 |
 | HTTP / SignalR 统一协议 | [Docs/design-api.md](Docs/design-api.md) | 已定稿 |
-| 账号、角色与建城 | [Docs/design-account-city.md](Docs/design-account-city.md) | 待撰写 |
-| 大地图与 NPC 据点 | [Docs/design-world-map.md](Docs/design-world-map.md) | 待撰写 |
+| 账号、角色与建城 | [Docs/design-account-city.md](Docs/design-account-city.md) | 已定稿 |
+| 大地图与 NPC 据点 | [Docs/design-world-map.md](Docs/design-world-map.md) | 撰写中 |
 | 城内建筑（内政 / 科技 / 军事） | [Docs/design-inner-city.md](Docs/design-inner-city.md) | 待撰写 |
 | 城墙与城防 | [Docs/design-city-wall.md](Docs/design-city-wall.md) | 待撰写 |
 | 城外资源田 | [Docs/design-outer-resources.md](Docs/design-outer-resources.md) | 待撰写 |
@@ -126,13 +127,16 @@ SanguoGame/
 
 ## 本地运行服务端
 
-需要安装 [.NET 9 SDK](https://dotnet.microsoft.com/download)。
+需要安装 [.NET 9 SDK](https://dotnet.microsoft.com/download) 和 PostgreSQL（可用 Docker）：
 
 ```bash
+docker compose up -d
 dotnet run --project SanguoGame.Server --launch-profile http
 ```
 
-默认 HTTP 地址：`http://localhost:5124`。开发环境会映射 OpenAPI。探活：`GET /api/system/ping`。
+默认 HTTP 地址：`http://localhost:5124`。连接串见 `SanguoGame.Server/appsettings.json`（库名 `sanguogame`，用户 `sanguo`）。开发环境会映射 OpenAPI，并自动同步表结构。
+
+探活：`GET /api/system/ping`。账号与建城接口见 [账号、角色与建城](Docs/design-account-city.md)。
 
 ## 相关约定
 

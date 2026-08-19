@@ -17,8 +17,8 @@
 | [design-roadmap.md](design-roadmap.md) | 开发顺序、每步范围与验收 | 已定稿 |
 | [design-architecture.md](design-architecture.md) | 总体架构、进程划分、技术选型 | 撰写中 |
 | [design-api.md](design-api.md) | HTTP / SignalR 统一请求与响应信封 | 已定稿 |
-| [design-account-city.md](design-account-city.md) | 账号、角色、主城创建 | 待撰写 |
-| [design-world-map.md](design-world-map.md) | 大地图格子、据点、视野加载 | 待撰写 |
+| [design-account-city.md](design-account-city.md) | 账号、角色、主城创建 | 已定稿 |
+| [design-world-map.md](design-world-map.md) | 大地图格子、据点、视野加载 | 撰写中 |
 | [design-inner-city.md](design-inner-city.md) | 城内内政 / 科技 / 军事建筑 | 待撰写 |
 | [design-city-wall.md](design-city-wall.md) | 城墙与城防建筑 | 待撰写 |
 | [design-outer-resources.md](design-outer-resources.md) | 城外矿、木、田与产出 | 待撰写 |

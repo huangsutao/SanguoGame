@@ -22,6 +22,13 @@ public sealed record ApiResult<T> : ApiResultBase
 
 public static class ApiResult
 {
+    public static ApiResult<object?> Ok(string message = "ok") =>
+        new()
+        {
+            Code = 0,
+            Message = message
+        };
+
     public static ApiResult<T> Ok<T>(T data, string message = "ok") =>
         new()
         {

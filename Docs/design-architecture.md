@@ -26,7 +26,7 @@ SanguoGame/
 ├── SanguoGame.sln
 ├── SanguoGame.Server/             # API + SignalR + 进程启动
 ├── SanguoGame.Core/               # 错误码、业务异常；后续纯规则
-├── SanguoGame.Infrastructure/     # 后续 FreeSql、Redis、Hangfire
+├── SanguoGame.Infrastructure/     # FreeSql + PostgreSQL；后续 Redis、Hangfire
 └── web/                           # Vue 3 独立前端（尚未创建，npm，不是 .csproj）
 ```
 

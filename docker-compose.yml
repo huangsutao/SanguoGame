@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: sanguo
+      POSTGRES_PASSWORD: sanguo
+      POSTGRES_DB: sanguogame
+    ports:
+      - "5432:5432"
+    volumes:
+      - sanguo_pg:/var/lib/postgresql/data
+
+volumes:
+  sanguo_pg:

@@ -5,6 +5,7 @@ using SanguoGame.Infrastructure;
 using SanguoGame.Server.Filters;
 using SanguoGame.Server.Hubs;
 using SanguoGame.Server.Json;
+using SanguoGame.Server.Security;
 
 namespace SanguoGame.Server;
 
@@ -14,7 +15,8 @@ public class Program
     {
         var builder = WebApplication.CreateBuilder(args);
 
-        builder.Services.AddInfrastructure();
+        builder.Services.AddInfrastructure(builder.Configuration);
+        builder.Services.AddGameAuth(builder.Configuration);
         builder.Services.AddSignalR();
         builder.Services.AddOpenApi();
 
@@ -56,6 +58,7 @@ public class Program
 
         app.UseHttpsRedirection();
         app.UseCors("web");
+        app.UseAuthentication();
         app.UseAuthorization();
 
         app.MapControllers();

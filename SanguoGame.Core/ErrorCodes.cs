@@ -10,17 +10,32 @@ public static class ErrorCodes
     /// <summary>请求参数校验失败。</summary>
     public const int ValidationFailed = 40001;
 
-    /// <summary>未登录或令牌无效（鉴权接入后使用）。</summary>
+    /// <summary>未登录、令牌无效，或登录失败。</summary>
     public const int Unauthorized = 40100;
 
-    /// <summary>已登录但无权操作（鉴权接入后使用）。</summary>
+    /// <summary>已登录但无权操作。</summary>
     public const int Forbidden = 40300;
 
-    /// <summary>资源不存在。</summary>
+    /// <summary>资源不存在（无角色、无城等）。</summary>
     public const int NotFound = 40400;
 
-    /// <summary>业务冲突，如坐标占用、重复建城。具体场景可在 409xx 继续细分。</summary>
+    /// <summary>业务冲突（未再细分时的兜底）。</summary>
     public const int Conflict = 40900;
+
+    /// <summary>用户名已注册。</summary>
+    public const int UsernameTaken = 40901;
+
+    /// <summary>该账号已有角色。</summary>
+    public const int CharacterExists = 40902;
+
+    /// <summary>角色名已被占用。</summary>
+    public const int CharacterNameTaken = 40903;
+
+    /// <summary>该角色已有主城。</summary>
+    public const int CityExists = 40904;
+
+    /// <summary>无空地可建城。</summary>
+    public const int MapFull = 40905;
 
     /// <summary>未处理的服务器异常。</summary>
     public const int InternalError = 50000;

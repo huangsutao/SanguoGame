@@ -20,15 +20,15 @@
 | 项 | 值 |
 |----|----|
 | 已完成 | 第 0 步（服务端骨架） |
-| 正在做 / 下一步 | **第 1 步：账号 + 建主城** |
-| 立刻要写的文档 | [账号、角色与建城](design-account-city.md)；建城所需的格子规则见 [大地图](design-world-map.md) |
+| 正在做 / 下一步 | **第 1 步进行中：账号 + 建主城**（设计已定稿，API 已落地；最小 Vue 仍可选） |
+| 立刻要写的文档 | 本步设计已定：[账号建城](design-account-city.md)、[大地图](design-world-map.md) 格子规则 |
 
 ## 总览
 
 | 步 | 内容 | 对应设计 | 本步首次接入 | 状态 |
 |----|------|----------|--------------|------|
 | 0 | 服务端骨架、统一信封、探活 | [统一协议](design-api.md)、[架构](design-architecture.md) | ASP.NET Core 9、CORS、空 Hub | **已完成** |
-| 1 | 账号、JWT、随机空地建主城 | [账号建城](design-account-city.md)、[大地图](design-world-map.md)（仅格子规则） | PostgreSQL、FreeSql、JWT | **下一步** |
+| 1 | 账号、JWT、随机空地建主城 | [账号建城](design-account-city.md)、[大地图](design-world-map.md)（仅格子规则） | PostgreSQL、FreeSql、JWT | **进行中** |
 | 2 | 城内建造 / 升级 + 到点完成 | [城内建筑](design-inner-city.md)、[实时推送](design-realtime.md) | Hangfire、Redis 按城锁、SignalR `BuildComplete` | 未开始 |
 | 3 | 城外矿 / 木 / 田：产出与收取 | [城外资源](design-outer-resources.md) | （复用 2 的任务与锁） | 未开始 |
 | 4 | 城墙与基础城防 | [城墙](design-city-wall.md) | — | 未开始 |

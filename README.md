@@ -34,7 +34,7 @@ SanguoGame/
 SanguoGame/
 ├── SanguoGame.Server/             # API + SignalR + 进程启动
 ├── SanguoGame.Core/               # 纯规则：建造、战斗、行军、资源结算
-├── SanguoGame.Infrastructure/     # EF Core、Redis、Hangfire
+├── SanguoGame.Infrastructure/     # FreeSql、Redis、Hangfire
 └── web/                           # Vue 3 独立前端（npm 工程，不是 .csproj）
 ```
 
@@ -59,7 +59,7 @@ SanguoGame/
 | 实时推送客户端 | `@microsoft/signalr` | 建造完成、行军到达、被攻打 |
 | API | ASP.NET Core Web API | 玩家主动指令，JSON + JWT |
 | WebSocket | SignalR | 服务端主动推送；底层优先 WebSocket，可降级 |
-| 数据 | EF Core + PostgreSQL | 玩家、城池、建筑、行军 |
+| 数据 | FreeSql + PostgreSQL | 玩家、城池、建筑、行军 |
 | 缓存 / 锁 | Redis | 在线状态、按城串行、防连点 |
 | 定时任务 | Hangfire（或 `IHostedService`） | 建造完成、行军到达、资源结算、AI tick |
 | 认证 | JWT + Refresh Token | HTTP 与 SignalR 共用同一套身份 |

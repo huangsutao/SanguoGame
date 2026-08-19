@@ -29,9 +29,9 @@ public sealed class JwtIssuer
             claims:
             [
                 new Claim(JwtRegisteredClaimNames.Sub, accountId.ToString()),
-                new Claim(ClaimTypes.NameIdentifier, accountId.ToString()),
                 new Claim(JwtRegisteredClaimNames.UniqueName, username)
             ],
+            notBefore: DateTime.UtcNow,
             expires: expiresAt,
             signingCredentials: credentials);
 

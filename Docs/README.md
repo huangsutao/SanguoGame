@@ -25,5 +25,5 @@
 | [design-march-battle.md](design-march-battle.md) | 行军、到达结算、战报 | 待撰写 |
 | [design-pvp.md](design-pvp.md) | 打玩家、掠夺、保护 CD | 待撰写 |
 | [design-ai.md](design-ai.md) | AI 玩家决策与 tick | 待撰写 |
-| [design-realtime.md](design-realtime.md) | HTTP 指令、SignalR 推送、Hangfire 到点任务 | 撰写中 |
+| [design-realtime.md](design-realtime.md) | HTTP 指令、SignalR 推送、Hangfire 到点任务 | 已定稿 |
 | [design-frontend-comm.md](design-frontend-comm.md) | Vue 独立工程、CORS / 代理、上线反代 | 撰写中 |

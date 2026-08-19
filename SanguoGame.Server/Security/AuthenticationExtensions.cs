@@ -1,3 +1,4 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -39,6 +40,8 @@ internal static class AuthenticationExtensions
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {
+                options.RequireHttpsMetadata = false;
+                options.MapInboundClaims = false;
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuer = true,
@@ -48,10 +51,22 @@ internal static class AuthenticationExtensions
                     ValidateIssuerSigningKey = true,
                     IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.SigningKey)),
                     ValidateLifetime = true,
-                    ClockSkew = TimeSpan.FromSeconds(30)
+                    ClockSkew = TimeSpan.FromMinutes(2),
+                    NameClaimType = JwtRegisteredClaimNames.Sub
                 };
                 options.Events = new JwtBearerEvents
                 {
+                    OnMessageReceived = context =>
+                    {
+                        var accessToken = context.Request.Query["access_token"];
+                        if (!string.IsNullOrEmpty(accessToken) &&
+                            context.HttpContext.Request.Path.StartsWithSegments("/hubs"))
+                        {
+                            context.Token = accessToken;
+                        }
+
+                        return Task.CompletedTask;
+                    },
                     OnChallenge = async context =>
                     {
                         context.HandleResponse();
@@ -78,12 +93,14 @@ internal static class AuthenticationExtensions
         services.AddScoped<AuthService>();
         services.AddScoped<CharacterService>();
         services.AddScoped<CityService>();
+        services.AddScoped<BuildingService>();
         return services;
     }
 
     public static long GetAccountId(this ClaimsPrincipal user)
     {
-        var value = user.FindFirstValue(ClaimTypes.NameIdentifier)
+        var value = user.FindFirstValue(JwtRegisteredClaimNames.Sub)
+            ?? user.FindFirstValue(ClaimTypes.NameIdentifier)
             ?? user.FindFirstValue("sub");
         if (!long.TryParse(value, out var accountId))
         {

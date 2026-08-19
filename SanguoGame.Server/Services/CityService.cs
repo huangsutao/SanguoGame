@@ -1,6 +1,7 @@
 using FreeSql;
 using Microsoft.Extensions.Options;
 using SanguoGame.Core;
+using SanguoGame.Core.Buildings;
 using SanguoGame.Core.World;
 using SanguoGame.Infrastructure;
 using SanguoGame.Infrastructure.Entities;
@@ -50,6 +51,10 @@ public sealed class CityService
                 Name = $"{character.Name}的城",
                 X = x,
                 Y = y,
+                Grain = InnerBuildingCatalog.StartingResource,
+                Wood = InnerBuildingCatalog.StartingResource,
+                Iron = InnerBuildingCatalog.StartingResource,
+                Copper = InnerBuildingCatalog.StartingResource,
                 CreatedAt = DateTime.UtcNow
             };
 

@@ -1,22 +1,28 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import {
   createCharacter,
+  fetchBuildings,
   fetchSession,
   foundCity,
   login,
   logout,
-  register
+  register,
+  upgradeBuilding
 } from "./api/game";
+import { createGameHub } from "./api/hub";
 import { ApiError } from "./api/types";
-import type { SessionResponse } from "./api/types";
+import type { BuildingsOverviewDto, SessionResponse } from "./api/types";
 import { clearTokens, getAccessToken, getRefreshToken, saveTokens } from "./session";
+import type { HubConnection } from "@microsoft/signalr";
 
 const loading = ref(true);
 const busy = ref(false);
 const error = ref("");
 const mode = ref<"login" | "register">("login");
 const session = ref<SessionResponse | null>(null);
+const overview = ref<BuildingsOverviewDto | null>(null);
+const nowMs = ref(Date.now());
 
 const username = ref("");
 const password = ref("");
@@ -26,7 +32,68 @@ const loggedIn = computed(() => session.value !== null);
 const hasCharacter = computed(() => Boolean(session.value?.character));
 const hasCity = computed(() => Boolean(session.value?.city));
 
+let hub: HubConnection | null = null;
+let tick: number | undefined;
+
+function fail(err: unknown): void {
+  error.value = err instanceof ApiError || err instanceof Error ? err.message : "操作失败";
+}
+
+function remainText(finishAt?: string): string {
+  if (!finishAt) {
+    return "";
+  }
+  const ms = Date.parse(finishAt) - nowMs.value;
+  if (ms <= 0) {
+    return "即将完成";
+  }
+  const sec = Math.ceil(ms / 1000);
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return m > 0 ? `${m}分${s}秒` : `${s}秒`;
+}
+
+function blockedText(reason?: string): string {
+  switch (reason) {
+    case "queue":
+      return "队列占用中";
+    case "maxLevel":
+      return "已满级";
+    case "prerequisite":
+      return "主殿等级不足";
+    case "resources":
+      return "资源不足";
+    default:
+      return "";
+  }
+}
+
+async function loadBuildings(): Promise<void> {
+  overview.value = await fetchBuildings();
+}
+
+async function connectHub(): Promise<void> {
+  await disconnectHub();
+  hub = createGameHub();
+  hub.on("BuildComplete", () => {
+    void loadBuildings();
+  });
+  await hub.start();
+}
+
+async function disconnectHub(): Promise<void> {
+  if (hub) {
+    hub.off("BuildComplete");
+    await hub.stop();
+    hub = null;
+  }
+}
+
 onMounted(async () => {
+  tick = window.setInterval(() => {
+    nowMs.value = Date.now();
+  }, 1000);
+
   if (!getAccessToken()) {
     loading.value = false;
     return;
@@ -42,9 +109,26 @@ onMounted(async () => {
   }
 });
 
-function fail(err: unknown): void {
-  error.value = err instanceof ApiError || err instanceof Error ? err.message : "操作失败";
-}
+onUnmounted(() => {
+  if (tick !== undefined) {
+    window.clearInterval(tick);
+  }
+  void disconnectHub();
+});
+
+watch(hasCity, async (ready) => {
+  if (!ready) {
+    overview.value = null;
+    await disconnectHub();
+    return;
+  }
+  try {
+    await loadBuildings();
+    await connectHub();
+  } catch (err) {
+    fail(err);
+  }
+});
 
 async function submitAuth(): Promise<void> {
   error.value = "";
@@ -97,6 +181,18 @@ async function submitFoundCity(): Promise<void> {
   }
 }
 
+async function submitUpgrade(type: string): Promise<void> {
+  error.value = "";
+  busy.value = true;
+  try {
+    overview.value = await upgradeBuilding(type);
+  } catch (err) {
+    fail(err);
+  } finally {
+    busy.value = false;
+  }
+}
+
 async function submitLogout(): Promise<void> {
   error.value = "";
   const refresh = getRefreshToken();
@@ -107,18 +203,20 @@ async function submitLogout(): Promise<void> {
   } catch {
     // 本地仍退出
   } finally {
+    await disconnectHub();
     clearTokens();
     session.value = null;
+    overview.value = null;
     password.value = "";
   }
 }
 </script>
 
 <template>
-  <main class="page">
+  <main class="page" :class="{ wide: hasCity }">
     <header class="header">
       <h1>战国</h1>
-      <p class="sub">第 1 步：账号 · 角色 · 建城</p>
+      <p class="sub">账号 · 角色 · 建城 · 城内</p>
     </header>
 
     <p v-if="loading" class="hint">加载中…</p>
@@ -179,7 +277,40 @@ async function submitLogout(): Promise<void> {
         <section v-if="hasCity" class="block city">
           <h2>{{ session?.city?.name }}</h2>
           <p class="coord">坐标 ({{ session?.city?.x }}, {{ session?.city?.y }})</p>
-          <p class="hint">城内 / 城墙 / 城外建筑将在后续步骤开放。</p>
+        </section>
+
+        <section v-if="overview" class="block">
+          <h2>城内</h2>
+          <p class="res">
+            粮 {{ overview.resources.grain }} / 木 {{ overview.resources.wood }} / 铁 {{ overview.resources.iron }} / 铜
+            {{ overview.resources.copper }}
+            （上限 {{ overview.resourceCap }}，人口上限 {{ overview.populationCap }}）
+          </p>
+          <p v-if="overview.queue" class="hint">
+            建造中：{{ overview.queue.buildingType }} → {{ overview.queue.targetLevel }} 级，剩余
+            {{ remainText(overview.queue.finishAt) }}
+          </p>
+          <ul class="buildings">
+            <li v-for="item in overview.buildings" :key="item.type">
+              <div>
+                <strong>{{ item.name }}</strong>
+                <span class="meta">{{ item.level }} / {{ item.maxLevel }} 级</span>
+                <span v-if="item.status === 'upgrading'" class="hint">
+                  升级中 {{ remainText(item.finishAt) }}
+                </span>
+                <span v-else-if="blockedText(item.blockedReason)" class="hint">{{
+                  blockedText(item.blockedReason)
+                }}</span>
+              </div>
+              <button
+                type="button"
+                :disabled="busy || item.status === 'upgrading' || Boolean(item.blockedReason)"
+                @click="submitUpgrade(item.type)"
+              >
+                {{ item.level === 0 ? "建造" : "升级" }}
+              </button>
+            </li>
+          </ul>
         </section>
       </div>
     </section>

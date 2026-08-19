@@ -1,9 +1,9 @@
 # 实时推送与定时任务
 
-- **状态：** 撰写中
+- **状态：** 已定稿（第 2 步所需：Hub 鉴权、Hangfire、建造到点）
 - **对应功能：** HTTP 指令通道、SignalR、建造 / 行军到点
 
-同一 ASP.NET Core 项目同时宿主 API 与 Hub。下指令走 HTTP，等结果 / 被打走推送。
+同一 ASP.NET Core 项目同时宿主 API 与 Hub。下指令走 HTTP，等结果 / 被打走推送。城内建造细则见 [城内建筑](design-inner-city.md)。
 
 ## 通道分工
 
@@ -12,74 +12,63 @@
 | HTTP | ASP.NET Core Web API | `fetch` / Axios | 玩家主动指令：登录、建城、升级、出兵 |
 | WebSocket | SignalR（底层 WebSocket，可降级长轮询） | `@microsoft/signalr` | 服务器主动推：建造完成、行军到达、被打 |
 
-不要用 WebSocket 发「升级建筑」这类指令（鉴权、重试、日志都更差）。不要用 HTTP 轮询「打完没有」。
-
-不必手写原生 WebSocket：SignalR 自带重连、降级、与 ASP.NET 身份集成。
+不要用 WebSocket 发「升级建筑」这类指令。不要用 HTTP 轮询「升完没有」。
 
 ## HTTP
 
-- Controller 或 Minimal API，JSON。信封与错误码见 [统一协议](design-api.md)。
-- 例：`POST /api/city/build`、`POST /api/army/march`、`POST /api/buildings/upgrade`。
-- 身份：`Authorization: Bearer <JWT>`，接口 `[Authorize]`。
+JSON 信封见 [统一协议](design-api.md)。身份：`Authorization: Bearer <JWT>`，`[Authorize]`。
 
-适合「谁发起、结果立刻能定」的操作（点升级、派出部队、查看城池）。耗时操作也先走 HTTP：立刻返回 `finishAt` / `arriveAt`，完成后再推送。
+耗时操作立刻返回 `finishAt` / `arriveAt`，完成后再推送。城内升级：`POST /api/buildings/upgrade`。
 
 ## SignalR
 
-Hub 路径：`/hubs/game`。客户端连上后加入自己的城分组（如 `city:{cityId}`）。
+Hub 路径：`/hubs/game`。`[Authorize]`，与 HTTP **同一套 JWT**。
 
-推送事件（第一版）：
+浏览器 WebSocket 不能自定义 Header，客户端用 `accessTokenFactory`；服务端从查询串 `access_token` 取令牌（仅 `/hubs` 路径）。
+
+连接成功后按账号查主城，加入组 `city:{cityId}`。无城不入组。结算后：
+
+```csharp
+Clients.Group($"city:{cityId}").SendAsync("BuildComplete", envelope);
+```
+
+payload 仍是 `{ code, message, data, traceId }`。`BuildComplete` 的 `data` 见 [城内建筑](design-inner-city.md)。
 
 | 事件 | 时机 |
 |------|------|
-| `BuildComplete` | 建造 / 升级到点生效；payload 见 [城内建筑](design-inner-city.md) |
-| `MarchArrived` | 行军到达并出战报 |
-| `CityAttacked` | 本城被打 |
-| 资源变化 | 收取或被掠后（可并入上列事件） |
+| `BuildComplete` | 建造 / 升级到点生效 |
+| `MarchArrived` | 行军到达并出战报（第 5 步） |
+| `CityAttacked` | 本城被打（第 6 步） |
 
-概念：
-
-```csharp
-public class GameHub : Hub
-{
-    // 连接后加入 city:{cityId}
-    // 结算后：Clients.Group($"city:{cityId}").SendAsync("MarchArrived", report);
-}
-```
-
-网页端用同一 JWT：
+网页：
 
 ```ts
-import * as signalR from "@microsoft/signalr";
-
 const connection = new signalR.HubConnectionBuilder()
   .withUrl("/hubs/game", { accessTokenFactory: () => token })
   .withAutomaticReconnect()
   .build();
-
-connection.on("MarchArrived", (report) => { /* 战报 */ });
-connection.on("BuildComplete", (building) => { /* 刷新建筑 */ });
-await connection.start();
 ```
 
-独立 Vue 工程的地址、代理、CORS 见 [前后端通讯](design-frontend-comm.md)。
+开发期 Vite 代理 `/hubs` 必须 `ws: true`。见 [前后端通讯](design-frontend-comm.md)。
 
 ## Hangfire
 
-建造、行军都是延迟任务：到 `FinishAt` / `ArriveAt` 结算，失败重试，业务侧要幂等（同一 `marchId` 只结算一次）。
+延迟任务存 PostgreSQL **独立 schema `hangfire`**，不经过 FreeSql、不用 EF。连接串与游戏库相同（`ConnectionStrings:Default`）。`PrepareSchemaIfNecessary = true`。
 
-存储与游戏 ORM 分开：用 `Hangfire.PostgreSql`（建议独立 schema `hangfire`）或 Redis。不需要 EF Core，也不经过 FreeSql。
+建造 Job：`CompleteInnerBuilding(cityId, buildingType, targetLevel)`，在 `finishAt` 触发。失败可重试；业务幂等（已是目标等级或非 `upgrading` 则直接成功）。
 
-结算过程读写玩家 / 城池 / 部队仍用 FreeSql。结完再 SignalR 推送。
+进程重启后未到期任务仍由 Hangfire 执行。启动时可扫描已到期仍为 `upgrading` 的行并补一次结算，防止 Job 丢失。
+
+## 按城串行
+
+指令与结算都要串行。第 2 步：对 `sg_city` 行 `SELECT … FOR UPDATE`（同一事务），并靠部分唯一索引 `uk_building_city_queue`。Redis `lock:city:{cityId}` 有连接串再启用；**无 Redis 时行锁即可**，不阻塞本步。
 
 ## 典型时序
 
 ```
-玩家点「出兵」
-    → HTTP POST /api/army/march   扣兵、写入 ArriveAt，立刻返回 { marchId, arriveAt }
-    → 前端按 arriveAt 自己倒计时（仅展示）
-    → Hangfire 到点结算战斗
-    → SignalR 推 MarchArrived
+玩家点「升级」
+    → HTTP POST /api/buildings/upgrade  扣资源、写 FinishAt，立刻返回
+    → 前端按 finishAt 倒计时（仅展示）
+    → Hangfire 到点结算
+    → SignalR 推 BuildComplete
 ```
-
-升级建筑同理：HTTP 返回 `finishAt`，到点推 `BuildComplete`。被打则玩家未操作也会收到 `CityAttacked`。

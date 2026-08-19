@@ -24,6 +24,10 @@ body {
   padding: 48px 20px 64px;
 }
 
+.page.wide {
+  max-width: 640px;
+}
+
 .header h1 {
   margin: 0;
   font-size: 2rem;
@@ -126,4 +130,32 @@ input {
 .coord {
   font-size: 1.25rem;
   letter-spacing: 0.06em;
+}
+
+.res {
+  font-size: 0.9rem;
+  margin: 0 0 12px;
+}
+
+.buildings {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.buildings li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid #3a342a;
+}
+
+.meta {
+  margin-left: 8px;
+  color: #9a8f7c;
+  font-size: 0.85rem;
 }

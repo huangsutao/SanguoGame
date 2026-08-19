@@ -1,5 +1,6 @@
 import { request } from "./http";
 import type {
+  BuildingsOverviewDto,
   CharacterResponse,
   CityResponse,
   SessionResponse,
@@ -28,4 +29,12 @@ export function createCharacter(name: string): Promise<CharacterResponse> {
 
 export function foundCity(): Promise<CityResponse> {
   return request<CityResponse>("post", "/api/city/found");
+}
+
+export function fetchBuildings(): Promise<BuildingsOverviewDto> {
+  return request<BuildingsOverviewDto>("get", "/api/buildings");
+}
+
+export function upgradeBuilding(buildingType: string): Promise<BuildingsOverviewDto> {
+  return request<BuildingsOverviewDto>("post", "/api/buildings/upgrade", { buildingType });
 }

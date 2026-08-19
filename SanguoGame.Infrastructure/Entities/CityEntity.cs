@@ -22,6 +22,18 @@ public sealed class CityEntity
     [Column(Name = "y", IsNullable = false)]
     public int Y { get; set; }
 
+    [Column(Name = "grain", IsNullable = false)]
+    public int Grain { get; set; } = 2000;
+
+    [Column(Name = "wood", IsNullable = false)]
+    public int Wood { get; set; } = 2000;
+
+    [Column(Name = "iron", IsNullable = false)]
+    public int Iron { get; set; } = 2000;
+
+    [Column(Name = "copper", IsNullable = false)]
+    public int Copper { get; set; } = 2000;
+
     [Column(Name = "created_at", IsNullable = false)]
     public DateTime CreatedAt { get; set; }
 }

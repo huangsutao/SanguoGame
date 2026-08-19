@@ -11,7 +11,8 @@
 | 服务端骨架 | Server / Core / Infrastructure 已拆；统一 JSON 信封、CORS、`/hubs/game` 空壳 |
 | 探活接口 | `GET /api/system/ping` |
 | 账号 / 建城 | 注册登录、JWT、创角、随机空地建主城已落地（需 PostgreSQL） |
-| 网页端 | `web/` 最小页：注册 / 登录 / 创角 / 建城（待与后端联调） |
+| 城内建筑 | 建造/升级、到点完成、Hangfire、SignalR `BuildComplete` |
+| 网页端 | `web/`：登录 / 创角 / 建城 / 城内升级 |
 | 其余玩法 | 未实现，顺序见 [路线图](Docs/design-roadmap.md) |
 
 ## 仓库结构
@@ -123,7 +124,7 @@ SanguoGame/
 | 行军与战斗结算 | [Docs/design-march-battle.md](Docs/design-march-battle.md) | 待撰写 |
 | 玩家对战与掠夺 | [Docs/design-pvp.md](Docs/design-pvp.md) | 待撰写 |
 | AI 玩家 | [Docs/design-ai.md](Docs/design-ai.md) | 待撰写 |
-| 实时推送与定时任务 | [Docs/design-realtime.md](Docs/design-realtime.md) | 撰写中 |
+| 实时推送与定时任务 | [Docs/design-realtime.md](Docs/design-realtime.md) | 已定稿 |
 | 网页端与前后端通讯 | [Docs/design-frontend-comm.md](Docs/design-frontend-comm.md) | 撰写中 |
 
 ## 本地运行服务端

@@ -11,6 +11,8 @@ public static class DependencyInjection
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+
         var connectionString = configuration.GetConnectionString("Default")
             ?? throw new InvalidOperationException("缺少 ConnectionStrings:Default");
 
@@ -29,7 +31,21 @@ public static class DependencyInjection
                     typeof(AccountEntity),
                     typeof(CharacterEntity),
                     typeof(CityEntity),
-                    typeof(RefreshTokenEntity));
+                    typeof(RefreshTokenEntity),
+                    typeof(BuildingEntity));
+
+                orm.Ado.ExecuteNonQuery("""
+                    CREATE UNIQUE INDEX IF NOT EXISTS uk_building_city_queue
+                    ON sg_building (city_id)
+                    WHERE status = 1
+                    """);
+
+                orm.Ado.ExecuteNonQuery("""
+                    UPDATE sg_city
+                    SET grain = 2000, wood = 2000, iron = 2000, copper = 2000
+                    WHERE grain = 0 AND wood = 0 AND iron = 0 AND copper = 0
+                      AND NOT EXISTS (SELECT 1 FROM sg_building b WHERE b.city_id = sg_city.id)
+                    """);
             }
 
             return orm;

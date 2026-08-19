@@ -37,6 +37,18 @@ public static class ErrorCodes
     /// <summary>无空地可建城。</summary>
     public const int MapFull = 40905;
 
+    /// <summary>资源不足。</summary>
+    public const int InsufficientResources = 40906;
+
+    /// <summary>本城建造队列占用中。</summary>
+    public const int BuildingQueueBusy = 40907;
+
+    /// <summary>建筑已满级。</summary>
+    public const int BuildingMaxLevel = 40908;
+
+    /// <summary>建筑前置未满足。</summary>
+    public const int BuildingPrerequisite = 40909;
+
     /// <summary>未处理的服务器异常。</summary>
     public const int InternalError = 50000;
 }

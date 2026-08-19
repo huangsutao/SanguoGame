@@ -20,7 +20,7 @@
 | 项 | 值 |
 |----|----|
 | 已完成 | 第 0 步（服务端骨架） |
-| 正在做 / 下一步 | **第 1 步 API 已联调通过**（Supabase）；网页点选联调可选。下一步：第 2 步实现前先补完 [实时推送](design-realtime.md) Hangfire / Hub 鉴权 |
+| 正在做 / 下一步 | **第 2 步进行中：城内建筑**（API / Hangfire / Hub / 网页已落地，待联调） |
 | 立刻要写的文档 | 本步设计已定：[账号建城](design-account-city.md)、[大地图](design-world-map.md) 格子规则 |
 
 ## 总览
@@ -29,7 +29,7 @@
 |----|------|----------|--------------|------|
 | 0 | 服务端骨架、统一信封、探活 | [统一协议](design-api.md)、[架构](design-architecture.md) | ASP.NET Core 9、CORS、空 Hub | **已完成** |
 | 1 | 账号、JWT、随机空地建主城 | [账号建城](design-account-city.md)、[大地图](design-world-map.md)（仅格子规则） | PostgreSQL、FreeSql、JWT | **API 已联调** |
-| 2 | 城内建造 / 升级 + 到点完成 | [城内建筑](design-inner-city.md)、[实时推送](design-realtime.md) | Hangfire、Redis 按城锁、SignalR `BuildComplete` | 未开始 |
+| 2 | 城内建造 / 升级 + 到点完成 | [城内建筑](design-inner-city.md)、[实时推送](design-realtime.md) | Hangfire、行锁、SignalR `BuildComplete` | **进行中** |
 | 3 | 城外矿 / 木 / 田：产出与收取 | [城外资源](design-outer-resources.md) | （复用 2 的任务与锁） | 未开始 |
 | 4 | 城墙与基础城防 | [城墙](design-city-wall.md) | — | 未开始 |
 | 5 | 出兵打 NPC 据点 + 战报 | [行军战斗](design-march-battle.md)、[大地图](design-world-map.md)（据点） | SignalR `MarchArrived` | 未开始 |

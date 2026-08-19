@@ -55,3 +55,46 @@ export interface CityResponse {
   y: number;
   createdAt: string;
 }
+
+export interface ResourceDto {
+  grain: number;
+  wood: number;
+  iron: number;
+  copper: number;
+}
+
+export interface BuildingCostDto {
+  level: number;
+  durationSeconds: number;
+  cost: ResourceDto;
+}
+
+export interface BuildingQueueDto {
+  buildingType: string;
+  targetLevel: number;
+  finishAt: string;
+}
+
+export interface BuildingItemDto {
+  type: string;
+  name: string;
+  category: string;
+  level: number;
+  maxLevel: number;
+  status: "idle" | "upgrading";
+  targetLevel?: number;
+  finishAt?: string;
+  effects: Record<string, number>;
+  next?: BuildingCostDto;
+  blockedReason?: string;
+}
+
+export interface BuildingsOverviewDto {
+  cityId: number;
+  serverTime: string;
+  resources: ResourceDto;
+  resourceCap: number;
+  populationCap: number;
+  queue?: BuildingQueueDto;
+  buildings: BuildingItemDto[];
+}

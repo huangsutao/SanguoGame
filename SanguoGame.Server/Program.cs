@@ -1,23 +1,49 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Hangfire;
+using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Mvc;
 using SanguoGame.Infrastructure;
 using SanguoGame.Server.Filters;
 using SanguoGame.Server.Hubs;
+using SanguoGame.Server.Jobs;
 using SanguoGame.Server.Json;
 using SanguoGame.Server.Security;
-
 namespace SanguoGame.Server;
 
 public class Program
 {
     public static void Main(string[] args)
     {
+        // Npgsql 6+ 拒绝把 Kind=UTC 写入 timestamp without time zone。
+        // FreeSql 建表用的是无时区 timestamp，需恢复旧行为。
+        AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+
         var builder = WebApplication.CreateBuilder(args);
 
         builder.Services.AddInfrastructure(builder.Configuration);
         builder.Services.AddGameAuth(builder.Configuration);
-        builder.Services.AddSignalR();
+        builder.Services.AddHangfire(config => config
+            .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+            .UseSimpleAssemblyNameTypeSerializer()
+            .UseRecommendedSerializerSettings()
+            .UsePostgreSqlStorage(
+                options => options.UseNpgsqlConnection(builder.Configuration.GetConnectionString("Default")),
+                new PostgreSqlStorageOptions
+                {
+                    SchemaName = "hangfire",
+                    PrepareSchemaIfNecessary = true
+                }));
+        builder.Services.AddHangfireServer();
+        builder.Services.AddHostedService<RecoverDueBuildingsHostedService>();
+        builder.Services.AddSignalR()
+            .AddJsonProtocol(options =>
+            {
+                options.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+                options.PayloadSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+                options.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+                options.PayloadSerializerOptions.Converters.Add(new UtcDateTimeJsonConverter());
+            });
         builder.Services.AddOpenApi();
 
         builder.Services.AddCors(options =>
@@ -55,8 +81,10 @@ public class Program
         {
             app.MapOpenApi();
         }
-
-        app.UseHttpsRedirection();
+        else
+        {
+            app.UseHttpsRedirection();
+        }
         app.UseCors("web");
         app.UseAuthentication();
         app.UseAuthorization();

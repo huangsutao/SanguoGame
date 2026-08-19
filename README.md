@@ -19,7 +19,6 @@ SanguoGame/
 ├── README.md                      # 本文件：结构、技术栈、设计文档入口
 ├── Docs/                          # 详细设计文档（统一放这里）
 │   ├── README.md                  # 文档索引与撰写约定
-│   ├── cursor_web_based_sengoku_game_tech.md  # 历史技术讨论（聊天导出）
 │   └── design-*.md                # 各功能详细设计（含待撰写占位）
 └── SanguoGame.Server/             # 服务端：ASP.NET Core Web API
     ├── Controllers/               # HTTP 接口（当前为模板 WeatherForecast）
@@ -66,7 +65,7 @@ SanguoGame/
 
 人多以后再考虑 Orleans（每城一个 Grain）、分服与地图分片。第一版不上 gRPC、不上自建原生 WebSocket 协议。
 
-选型依据与对比见：[历史技术讨论](Docs/cursor_web_based_sengoku_game_tech.md)。
+选型说明见 [总体架构与技术选型](Docs/design-architecture.md)。
 
 ## 通讯方式
 
@@ -120,8 +119,7 @@ SanguoGame/
 | 主题 | 文档 | 状态 |
 |------|------|------|
 | 文档索引与约定 | [Docs/README.md](Docs/README.md) | 已有 |
-| 历史技术讨论（聊天导出） | [Docs/cursor_web_based_sengoku_game_tech.md](Docs/cursor_web_based_sengoku_game_tech.md) | 已有 |
-| 总体架构与技术选型 | [Docs/design-architecture.md](Docs/design-architecture.md) | 待撰写 |
+| 总体架构与技术选型 | [Docs/design-architecture.md](Docs/design-architecture.md) | 撰写中 |
 | 账号、角色与建城 | [Docs/design-account-city.md](Docs/design-account-city.md) | 待撰写 |
 | 大地图与 NPC 据点 | [Docs/design-world-map.md](Docs/design-world-map.md) | 待撰写 |
 | 城内建筑（内政 / 科技 / 军事） | [Docs/design-inner-city.md](Docs/design-inner-city.md) | 待撰写 |
@@ -130,8 +128,8 @@ SanguoGame/
 | 行军与战斗结算 | [Docs/design-march-battle.md](Docs/design-march-battle.md) | 待撰写 |
 | 玩家对战与掠夺 | [Docs/design-pvp.md](Docs/design-pvp.md) | 待撰写 |
 | AI 玩家 | [Docs/design-ai.md](Docs/design-ai.md) | 待撰写 |
-| 实时推送与定时任务 | [Docs/design-realtime.md](Docs/design-realtime.md) | 待撰写 |
-| 网页端与前后端通讯 | [Docs/design-frontend-comm.md](Docs/design-frontend-comm.md) | 待撰写 |
+| 实时推送与定时任务 | [Docs/design-realtime.md](Docs/design-realtime.md) | 撰写中 |
+| 网页端与前后端通讯 | [Docs/design-frontend-comm.md](Docs/design-frontend-comm.md) | 撰写中 |
 
 ## 本地运行服务端
 

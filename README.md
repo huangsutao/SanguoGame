@@ -117,7 +117,7 @@ SanguoGame/
 | HTTP / SignalR 统一协议 | [Docs/design-api.md](Docs/design-api.md) | 已定稿 |
 | 账号、角色与建城 | [Docs/design-account-city.md](Docs/design-account-city.md) | 已定稿 |
 | 大地图与 NPC 据点 | [Docs/design-world-map.md](Docs/design-world-map.md) | 撰写中 |
-| 城内建筑（内政 / 科技 / 军事） | [Docs/design-inner-city.md](Docs/design-inner-city.md) | 待撰写 |
+| 城内建筑（内政 / 科技 / 军事） | [Docs/design-inner-city.md](Docs/design-inner-city.md) | 已定稿 |
 | 城墙与城防 | [Docs/design-city-wall.md](Docs/design-city-wall.md) | 待撰写 |
 | 城外资源田 | [Docs/design-outer-resources.md](Docs/design-outer-resources.md) | 待撰写 |
 | 行军与战斗结算 | [Docs/design-march-battle.md](Docs/design-march-battle.md) | 待撰写 |

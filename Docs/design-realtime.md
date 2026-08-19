@@ -32,7 +32,7 @@ Hub 路径：`/hubs/game`。客户端连上后加入自己的城分组（如 `ci
 
 | 事件 | 时机 |
 |------|------|
-| `BuildComplete` | 建造 / 升级到点生效 |
+| `BuildComplete` | 建造 / 升级到点生效；payload 见 [城内建筑](design-inner-city.md) |
 | `MarchArrived` | 行军到达并出战报 |
 | `CityAttacked` | 本城被打 |
 | 资源变化 | 收取或被掠后（可并入上列事件） |

@@ -18,7 +18,7 @@
 
 ## HTTP
 
-- Controller 或 Minimal API，JSON。
+- Controller 或 Minimal API，JSON。信封与错误码见 [统一协议](design-api.md)。
 - 例：`POST /api/city/build`、`POST /api/army/march`、`POST /api/buildings/upgrade`。
 - 身份：`Authorization: Bearer <JWT>`，接口 `[Authorize]`。
 

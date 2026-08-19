@@ -1,18 +1,17 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
-    <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.19" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.19" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\SanguoGame.Core\SanguoGame.Core.csproj" />
-    <ProjectReference Include="..\SanguoGame.Infrastructure\SanguoGame.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

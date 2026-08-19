@@ -54,6 +54,8 @@ await http.post("/api/army/march", { targetX: 12, targetY: 34, troops: [] });
 await http.get("/api/city/me");
 ```
 
+请求 body 直接是业务字段；响应一律为 `{ code, message, data, traceId }`，以 `code === 0` 为成功。完整契约见 [统一协议](design-api.md)。
+
 当前服务端开发地址是 `http://localhost:5124`（见根 README），不要写死在每个页面里。
 
 ## SignalR

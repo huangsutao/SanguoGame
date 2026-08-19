@@ -8,7 +8,8 @@
 
 | 部分 | 状态 |
 |------|------|
-| 服务端 `SanguoGame.Server` | 已有 ASP.NET Core 9 Web API 空骨架（模板接口） |
+| 服务端骨架 | Server / Core / Infrastructure 已拆；统一 JSON 信封、CORS、`/hubs/game` 空壳 |
+| 探活接口 | `GET /api/system/ping` |
 | 网页端 | 尚未创建，规划为独立 Vue 3 工程 |
 | 玩法系统（建城、建筑、行军等） | 未实现，设计见 [Docs](Docs/README.md) |
 
@@ -18,26 +19,14 @@
 SanguoGame/
 ├── README.md                      # 本文件：结构、技术栈、设计文档入口
 ├── Docs/                          # 详细设计文档（统一放这里）
-│   ├── README.md                  # 文档索引与撰写约定
-│   └── design-*.md                # 各功能详细设计（含待撰写占位）
-└── SanguoGame.Server/             # 服务端：ASP.NET Core Web API
-    ├── Controllers/               # HTTP 接口（当前为模板 WeatherForecast）
-    ├── Program.cs                 # 启动、中间件、服务注册
-    ├── appsettings*.json          # 配置
-    └── SanguoGame.Server.sln      # 解决方案
-```
-
-规划中的目录（尚未落地，实现时再拆）：
-
-```
-SanguoGame/
+├── SanguoGame.sln                 # 服务端解决方案
 ├── SanguoGame.Server/             # API + SignalR + 进程启动
-├── SanguoGame.Core/               # 纯规则：建造、战斗、行军、资源结算
-├── SanguoGame.Infrastructure/     # FreeSql、Redis、Hangfire
-└── web/                           # Vue 3 独立前端（npm 工程，不是 .csproj）
+├── SanguoGame.Core/               # 错误码、业务异常；后续纯规则
+├── SanguoGame.Infrastructure/     # 后续 FreeSql、Redis、Hangfire
+└── web/                           # Vue 3 独立前端（尚未创建，npm，不是 .csproj）
 ```
 
-第一版服务端保持 **单个 ASP.NET Core 进程**：HTTP、SignalR、定时任务都放在同一站点里，不要拆微服务。
+第一版服务端保持 **单个 ASP.NET Core 进程**：HTTP、SignalR、定时任务都放在同一站点里，不要拆微服务。HTTP 与 SignalR 的 JSON 信封见 [统一协议](Docs/design-api.md)。
 
 ## 技术栈
 
@@ -45,7 +34,7 @@ SanguoGame/
 
 | 层 | 技术 | 说明 |
 |----|------|------|
-| 服务端 | ASP.NET Core 9 Web API | `SanguoGame.Server`，当前仅模板工程 |
+| 服务端 | ASP.NET Core 9 Web API | `SanguoGame.Server` 宿主；Core / Infrastructure 类库 |
 | 运行时 | .NET 9 | `TargetFramework: net9.0` |
 
 ### 规划（第一版）
@@ -120,6 +109,7 @@ SanguoGame/
 |------|------|------|
 | 文档索引与约定 | [Docs/README.md](Docs/README.md) | 已有 |
 | 总体架构与技术选型 | [Docs/design-architecture.md](Docs/design-architecture.md) | 撰写中 |
+| HTTP / SignalR 统一协议 | [Docs/design-api.md](Docs/design-api.md) | 已定稿 |
 | 账号、角色与建城 | [Docs/design-account-city.md](Docs/design-account-city.md) | 待撰写 |
 | 大地图与 NPC 据点 | [Docs/design-world-map.md](Docs/design-world-map.md) | 待撰写 |
 | 城内建筑（内政 / 科技 / 军事） | [Docs/design-inner-city.md](Docs/design-inner-city.md) | 待撰写 |
@@ -136,11 +126,10 @@ SanguoGame/
 需要安装 [.NET 9 SDK](https://dotnet.microsoft.com/download)。
 
 ```bash
-cd SanguoGame.Server
-dotnet run --launch-profile http
+dotnet run --project SanguoGame.Server --launch-profile http
 ```
 
-默认 HTTP 地址：`http://localhost:5124`。开发环境会映射 OpenAPI。当前仅有模板接口 `GET /WeatherForecast`。
+默认 HTTP 地址：`http://localhost:5124`。开发环境会映射 OpenAPI。探活：`GET /api/system/ping`。
 
 ## 相关约定
 

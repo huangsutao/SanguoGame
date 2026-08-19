@@ -19,17 +19,18 @@
 
 第一版 **一个 ASP.NET Core 进程**：Web API、SignalR、Hangfire 同站。不要拆成地图服务 / 战斗服务 / 聊天服务。
 
-当前仓库只有 `SanguoGame.Server`（空骨架）。逻辑变复杂后再拆类库，仍是同一个网站：
+类库已按分层拆开，**仍是同一个网站、同一个进程**：
 
 ```
 SanguoGame/
+├── SanguoGame.sln
 ├── SanguoGame.Server/             # API + SignalR + 进程启动
-├── SanguoGame.Core/               # 纯规则：建造、战斗、行军、资源结算
-├── SanguoGame.Infrastructure/     # FreeSql、Redis、Hangfire
-└── web/                           # Vue 3 独立前端（npm，不是 .csproj）
+├── SanguoGame.Core/               # 错误码、业务异常；后续纯规则
+├── SanguoGame.Infrastructure/     # 后续 FreeSql、Redis、Hangfire
+└── web/                           # Vue 3 独立前端（尚未创建，npm，不是 .csproj）
 ```
 
-- 服务端可以先只有一个 Web API 项目。
+- HTTP / SignalR JSON 信封见 [统一协议](design-api.md)。
 - 网页端必须另建 Vue 工程（除非改用很简陋的 Razor）。
 - 可选 `Shared` 放前后端共用 DTO，不必须一上来就建。
 - Orleans、网关、多服务：人多以后再说。

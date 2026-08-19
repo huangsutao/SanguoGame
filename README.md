@@ -11,7 +11,7 @@
 | 服务端骨架 | Server / Core / Infrastructure 已拆；统一 JSON 信封、CORS、`/hubs/game` 空壳 |
 | 探活接口 | `GET /api/system/ping` |
 | 账号 / 建城 | 注册登录、JWT、创角、随机空地建主城已落地（需 PostgreSQL） |
-| 网页端 | 尚未创建，规划为独立 Vue 3 工程 |
+| 网页端 | `web/` 最小页：注册 / 登录 / 创角 / 建城（待与后端联调） |
 | 其余玩法 | 未实现，顺序见 [路线图](Docs/design-roadmap.md) |
 
 ## 仓库结构
@@ -24,7 +24,7 @@ SanguoGame/
 ├── SanguoGame.Server/             # API + SignalR + 进程启动
 ├── SanguoGame.Core/               # 错误码、业务异常；后续纯规则
 ├── SanguoGame.Infrastructure/     # FreeSql + PostgreSQL；后续 Redis、Hangfire
-└── web/                           # Vue 3 独立前端（尚未创建，npm，不是 .csproj）
+└── web/                           # Vue 3 独立前端（npm）
 ```
 
 第一版服务端保持 **单个 ASP.NET Core 进程**：HTTP、SignalR、定时任务都放在同一站点里，不要拆微服务。HTTP 与 SignalR 的 JSON 信封见 [统一协议](Docs/design-api.md)。
@@ -37,6 +37,7 @@ SanguoGame/
 |----|------|------|
 | 服务端 | ASP.NET Core 9 Web API | `SanguoGame.Server` 宿主；Core / Infrastructure 类库 |
 | 运行时 | .NET 9 | `TargetFramework: net9.0` |
+| 网页端 | Vue 3 + TypeScript + Vite | `web/`：登录、创角、建城最小页 |
 
 ### 规划（第一版）
 
@@ -137,6 +138,18 @@ dotnet run --project SanguoGame.Server --launch-profile http
 默认 HTTP 地址：`http://localhost:5124`。连接串见 `SanguoGame.Server/appsettings.json`（库名 `sanguogame`，用户 `sanguo`）。开发环境会映射 OpenAPI，并自动同步表结构。
 
 探活：`GET /api/system/ping`。账号与建城接口见 [账号、角色与建城](Docs/design-account-city.md)。
+
+## 本地运行网页端
+
+需要 [Node.js](https://nodejs.org/)（已含 npm）。先在 Visual Studio 里启动服务端（`http://localhost:5124`），再：
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+浏览器打开 `http://localhost:5173`。开发期 Vite 把 `/api`、`/hubs` 代理到后端，不必改 `VITE_API_BASE`。
 
 ## 相关约定
 

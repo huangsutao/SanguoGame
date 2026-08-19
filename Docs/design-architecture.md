@@ -27,7 +27,7 @@ SanguoGame/
 ├── SanguoGame.Server/             # API + SignalR + 进程启动
 ├── SanguoGame.Core/               # 错误码、业务异常；后续纯规则
 ├── SanguoGame.Infrastructure/     # FreeSql + PostgreSQL；后续 Redis、Hangfire
-└── web/                           # Vue 3 独立前端（尚未创建，npm，不是 .csproj）
+└── web/                           # Vue 3 独立前端（npm）
 ```
 
 - HTTP / SignalR JSON 信封见 [统一协议](design-api.md)。

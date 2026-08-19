@@ -1,0 +1,129 @@
+:root {
+  color: #e8e0d0;
+  background: #16130f;
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  line-height: 1.5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+.page {
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 48px 20px 64px;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 2rem;
+  letter-spacing: 0.4em;
+  font-weight: 600;
+}
+
+.sub,
+.hint {
+  color: #9a8f7c;
+  font-size: 0.9rem;
+}
+
+.card {
+  margin-top: 24px;
+  padding: 24px;
+  background: #221e18;
+  border: 1px solid #3a342a;
+  border-radius: 12px;
+}
+
+.error {
+  margin: 0 0 16px;
+  color: #e08a7a;
+}
+
+.form {
+  display: grid;
+  gap: 12px;
+}
+
+.tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.tabs button,
+.form button,
+.block button {
+  border: 1px solid #6a5c45;
+  background: #2c261e;
+  color: inherit;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.tabs button.active,
+.form button[type="submit"],
+.block > button {
+  background: #8a3b2a;
+  border-color: #a34a36;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.9rem;
+}
+
+input {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #4a4338;
+  background: #16130f;
+  color: inherit;
+}
+
+.who {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.link {
+  border: 0;
+  background: none;
+  color: #c4b08a;
+  cursor: pointer;
+  padding: 0;
+}
+
+.block {
+  padding-top: 12px;
+  border-top: 1px solid #3a342a;
+}
+
+.block h2 {
+  margin: 0 0 8px;
+  font-size: 1.05rem;
+}
+
+.coord {
+  font-size: 1.25rem;
+  letter-spacing: 0.06em;
+}

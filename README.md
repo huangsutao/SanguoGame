@@ -90,7 +90,7 @@ SanguoGame/
  └─ AI 玩家（同一套结算，决策为服务端脚本）
 ```
 
-建议实现顺序（详细设计链接见下一节）：
+建议实现顺序（施工清单、每步验收与基础设施接入见 [开发路线图](Docs/design-roadmap.md)）：
 
 1. 账号 + 在地图随机空地建主城
 2. 城内建筑：建造 / 升级 + 到点完成
@@ -101,6 +101,8 @@ SanguoGame/
 7. AI 玩家
 8. 地图表现、联盟、邮件、排行等扩展
 
+**当前下一步是第 1 步。** 先定稿账号 / 建城与格子规则，再接 PostgreSQL 与 JWT。
+
 ## 详细设计文档
 
 **以后新增的详细设计一律放在 [`Docs/`](Docs/README.md) 目录**，本表作为入口。尚未写完的文档已预留文件，正文标为「待撰写」。
@@ -108,6 +110,7 @@ SanguoGame/
 | 主题 | 文档 | 状态 |
 |------|------|------|
 | 文档索引与约定 | [Docs/README.md](Docs/README.md) | 已有 |
+| 开发路线图（先做什么） | [Docs/design-roadmap.md](Docs/design-roadmap.md) | 已定稿 |
 | 总体架构与技术选型 | [Docs/design-architecture.md](Docs/design-architecture.md) | 撰写中 |
 | HTTP / SignalR 统一协议 | [Docs/design-api.md](Docs/design-api.md) | 已定稿 |
 | 账号、角色与建城 | [Docs/design-account-city.md](Docs/design-account-city.md) | 待撰写 |

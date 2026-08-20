@@ -42,7 +42,7 @@ public sealed class ArmyService
                 .WithTransaction(transaction)
                 .Where(b => b.CityId == locked.Id)
                 .ToListAsync(ct);
-            var barracksLevel = rows.FirstOrDefault(b => b.Type == "barracks")?.Level ?? 0;
+            var barracksLevel = CityStats.BuildingLevel(rows, "barracks");
             if (barracksLevel < def.RequireBarracksLevel)
             {
                 throw new BizException(ErrorCodes.BarracksRequired, $"需要兵营 {def.RequireBarracksLevel} 级");

@@ -46,7 +46,4 @@ public static class TechBonuses
 
         return cost.ScaleFloor((100 - clipped) / 100d);
     }
-
-    public static int LevelOf(IReadOnlyDictionary<string, int> levels, string type) =>
-        levels.TryGetValue(type, out var level) ? Math.Max(0, level) : 0;
 }

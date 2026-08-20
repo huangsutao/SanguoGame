@@ -20,8 +20,8 @@
 | 项 | 值 |
 |----|----|
 | 已完成 | 第 0～11 步；第一版数值已按联调缩短时长、加大田产出 |
-| 正在做 / 下一步 | 第一版玩法已走完；后续只做联调数值与缺陷修复 |
-| 立刻要写的文档 | — |
+| 正在做 / 下一步 | 第 12 步：每日军务与斥候侦察 |
+| 立刻要写的文档 | [每日军务与斥候](design-daily-scout.md) 已定稿 |
 
 ## 总览
 
@@ -39,6 +39,7 @@
 | 9 | 邮件、排行、联盟 | [邮件](design-mail.md)、[排行](design-ranking.md)、[联盟](design-alliance.md) | 同联盟免战 | **已完成** |
 | 10 | 市集兑换与同盟运输 | [市集](design-market.md) | NPC 市集点、`sg_transport`、`TransportArrived` | **已完成** |
 | 11 | 分科科技建筑与加成 | [科技](design-tech.md) | 演武堂 / 城防署 / 司农院 | **已完成** |
+| 12 | 每日军务与斥候侦察 | [每日军务与斥候](design-daily-scout.md) | `sg_daily_quest`、`sg_march.kind` | **进行中** |
 
 网页端：第 1 步末搭最小 Vue（登录 + 我的城）；城内界面跟第 2 步；出征面板跟第 5 步；大地图画布放第 8 步。不要第 0 步先做空前端。
 
@@ -397,6 +398,30 @@
 
 ---
 
+## 第 12 步：每日军务与斥候侦察
+
+**目标：** 当天有五条固定事可做并可领犒赏；出征前能派人看据点 / 敌城虚实。
+
+### 先定稿
+
+- [design-daily-scout.md](design-daily-scout.md)
+
+### 做
+
+- `GET /api/daily`、`POST /api/daily/claim`
+- 收取入库、下达升级、征兵、战胜据点、市集兑换出发时计数
+- `POST /api/army/scout`：扣 1 步兵、半程到达、侦察邮件、不战斗
+
+### 不做
+
+- 召回 / 加速、占领据点、侦察市集、随机任务
+
+### 验收
+
+- 见 [每日军务与斥候](design-daily-scout.md) 验收条
+
+---
+
 ## 明确不做（第一版全程）
 
 - 全图实时视野、帧同步、即时 RTS
@@ -417,3 +442,4 @@
 | 网页 | `design-frontend-comm.md` | `web/`（第 1 步末创建） |
 | 市集 / 运输 | `design-market.md` | `SanguoGame.Core` 汇率；`sg_market` / `sg_transport`；`MarketsController` |
 | 科技建筑 | `design-tech.md` | `SanguoGame.Core` 加成公式；`InnerBuildingCatalog` 三座分科 |
+| 每日军务 / 斥候 | `design-daily-scout.md` | `sg_daily_quest`；`MarchKind`；`DailyController` / `army/scout` |

@@ -13,7 +13,7 @@
 | 兵营解锁后征兵（步 / 弓 / 骑），兵力存在城上 | 帧同步、客户端预测 |
 | `POST` 出征立刻返回 `arriveAt` | 全图实时视野 |
 | Hangfire 到点一次性结算并出战报 | 多回合回合制、攻城耐久战 |
-| SignalR `MarchArrived` | 取消行军、加速行军 |
+| SignalR `MarchArrived` | 取消行军、加速行军（斥候见第 12 步，不战斗） |
 | NPC 与玩家走同一套 March / Battle | 本步打其他玩家（第 6 步） |
 
 ## 兵力

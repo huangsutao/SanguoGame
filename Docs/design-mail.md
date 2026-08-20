@@ -11,7 +11,7 @@
 | 做 | 不做 |
 |----|------|
 | 每封邮件属于一个角色；列表、已读、全部已读 | 玩家互发私聊、附件、资源附件 |
-| 战斗结算后给攻守双方各写一封（据点只给攻方） | 推 SignalR（刷新邮件页即可） |
+| 战斗结算后给攻守双方各写一封（据点只给攻方）；侦察只给出发方写 `scout` 邮件 | 推 SignalR（刷新邮件页即可） |
 | 联盟邀请 / 申请 / 踢出 / 解散写邮件 | 邮件里直接点同意（同意走联盟 API） |
 
 ## 模型
@@ -19,7 +19,7 @@
 ```
 Mail
  ├─ recipientCharacterId
- ├─ type: system | battle | alliance
+ ├─ type: system | battle | alliance | scout
  ├─ title / body
  ├─ relatedType / relatedId（可选，如 report / invite / alliance）
  ├─ isRead
@@ -70,6 +70,7 @@ Mail
 | 事件 | type | 收件人 | related |
 |------|------|--------|---------|
 | 行军结算 | `battle` | 攻方角色；目标为玩家城时再给守方 | `report` + 战报 Id |
+| 斥候到点 | `scout` | 出发角色 | `march` + 行军 Id |
 | 联盟邀请 | `alliance` | 被邀请角色 | `invite` + 邀请 Id |
 | 入盟申请 | `alliance` | 盟主 | `application` + 联盟 Id |
 | 申请通过 / 被踢 / 解散 | `alliance` | 当事角色 / 全体成员 | `alliance` + 联盟 Id |

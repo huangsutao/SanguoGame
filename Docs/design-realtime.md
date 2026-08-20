@@ -18,7 +18,7 @@
 
 JSON 信封见 [统一协议](design-api.md)。身份：`Authorization: Bearer <JWT>`，`[Authorize]`。
 
-耗时操作立刻返回 `finishAt` / `arriveAt`，完成后再推送。城内 / 城墙 / 城外升级：`POST /api/buildings|walls|fields/upgrade`。出征：`POST /api/army/march`。市集兑换 / 同盟运输：`POST /api/markets/trade|aid`。
+耗时操作立刻返回 `finishAt` / `arriveAt`，完成后再推送。城内 / 城墙 / 城外升级：`POST /api/buildings|walls|fields/upgrade`。出征：`POST /api/army/march`。侦察：`POST /api/army/scout`。市集兑换 / 同盟运输：`POST /api/markets/trade|aid`。每日军务：`GET /api/daily`、`POST /api/daily/claim`。
 
 ## SignalR
 

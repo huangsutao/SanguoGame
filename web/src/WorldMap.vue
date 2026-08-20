@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from "vue";
 import type { WorldDto } from "./api/types";
+import { markerArt } from "./art";
 
 const props = defineProps<{ world: WorldDto }>();
 const emit = defineEmits<{
@@ -18,6 +19,34 @@ let startX = 0;
 let startY = 0;
 let raf = 0;
 
+const sprites = {
+  city: loadSprite(markerArt.city),
+  outpost: loadSprite(markerArt.outpost),
+  roaming: loadSprite(markerArt.roaming),
+  market: loadSprite(markerArt.market)
+};
+
+function loadSprite(src: string): HTMLImageElement {
+  const img = new Image();
+  img.src = src;
+  return img;
+}
+
+function ready(img: HTMLImageElement): boolean {
+  return img.complete && img.naturalWidth > 0;
+}
+
+function drawSprite(ctx: CanvasRenderingContext2D, img: HTMLImageElement, sx: number, sy: number, size: number): void {
+  if (ready(img)) {
+    ctx.drawImage(img, sx - size / 2, sy - size / 2, size, size);
+    return;
+  }
+  ctx.fillStyle = "#c9a45a";
+  ctx.beginPath();
+  ctx.arc(sx, sy, size / 3, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 function draw(): void {
   const el = canvas.value;
   if (!el) {
@@ -29,7 +58,11 @@ function draw(): void {
   }
   const w = el.width;
   const h = el.height;
-  ctx.fillStyle = "#1a1612";
+  const sky = ctx.createLinearGradient(0, 0, 0, h);
+  sky.addColorStop(0, "#2a3824");
+  sky.addColorStop(0.55, "#1c2418");
+  sky.addColorStop(1, "#14120e");
+  ctx.fillStyle = sky;
   ctx.fillRect(0, 0, w, h);
   const cell = scale.value;
   const toScreen = (x: number, y: number) => ({
@@ -37,7 +70,7 @@ function draw(): void {
     sy: h / 2 + (y - originY.value) * cell
   });
 
-  ctx.strokeStyle = "#2a251f";
+  ctx.strokeStyle = "rgba(70, 90, 50, 0.35)";
   ctx.lineWidth = 1;
   const minX = Math.floor(originX.value - w / 2 / cell) - 1;
   const maxX = Math.ceil(originX.value + w / 2 / cell) + 1;
@@ -106,7 +139,7 @@ function draw(): void {
     ctx.stroke();
     ctx.fillStyle = mine ? fill : "#8aa0b4";
     ctx.beginPath();
-    ctx.arc(cur.sx, cur.sy, 3, 0, Math.PI * 2);
+    ctx.arc(cur.sx, cur.sy, 4, 0, Math.PI * 2);
     ctx.fill();
   };
 
@@ -128,48 +161,34 @@ function draw(): void {
     );
   }
 
+  const markSize = Math.max(16, Math.min(34, cell * 2.4));
+
   for (const item of props.world.outposts) {
     const p = toScreen(item.x, item.y);
     const roaming = item.kind === "roaming";
-    ctx.fillStyle = roaming
-      ? item.garrison > 0
-        ? "#c45a2a"
-        : "#5a3a2a"
-      : item.garrison > 0
-        ? "#6b5b3a"
-        : "#3a342a";
-    if (roaming) {
-      ctx.beginPath();
-      ctx.moveTo(p.sx, p.sy - 5);
-      ctx.lineTo(p.sx + 5, p.sy);
-      ctx.lineTo(p.sx, p.sy + 5);
-      ctx.lineTo(p.sx - 5, p.sy);
-      ctx.closePath();
-      ctx.fill();
-    } else {
-      ctx.fillRect(p.sx - 4, p.sy - 4, 8, 8);
-    }
+    ctx.globalAlpha = item.garrison > 0 ? 1 : 0.55;
+    drawSprite(ctx, roaming ? sprites.roaming : sprites.outpost, p.sx, p.sy, markSize);
+    ctx.globalAlpha = 1;
   }
 
   for (const item of props.world.markets ?? []) {
     const p = toScreen(item.x, item.y);
-    ctx.fillStyle = "#c47a3a";
-    ctx.beginPath();
-    ctx.moveTo(p.sx, p.sy - 6);
-    ctx.lineTo(p.sx + 5, p.sy + 4);
-    ctx.lineTo(p.sx - 5, p.sy + 4);
-    ctx.closePath();
-    ctx.fill();
+    drawSprite(ctx, sprites.market, p.sx, p.sy, markSize);
   }
 
   for (const item of props.world.cities) {
     const p = toScreen(item.x, item.y);
-    ctx.fillStyle = item.owner === "self" ? "#d4a017" : item.owner === "ai" ? "#a34a36" : "#4a8a6a";
+    const size = item.owner === "self" ? markSize + 6 : markSize;
+    drawSprite(ctx, sprites.city, p.sx, p.sy, size);
+    ctx.strokeStyle = item.owner === "self" ? "#d4a017" : item.owner === "ai" ? "#a34a36" : "#4a8a6a";
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(p.sx, p.sy, 6, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.arc(p.sx, p.sy, size / 2 + 2, 0, Math.PI * 2);
+    ctx.stroke();
     if (item.protected) {
       ctx.strokeStyle = "#7aa0c4";
+      ctx.beginPath();
+      ctx.arc(p.sx, p.sy, size / 2 + 6, 0, Math.PI * 2);
       ctx.stroke();
     }
   }
@@ -181,8 +200,10 @@ function hit(clientX: number, clientY: number): void {
     return;
   }
   const rect = el.getBoundingClientRect();
-  const x = originX.value + (clientX - rect.left - el.width / 2) / scale.value;
-  const y = originY.value + (clientY - rect.top - el.height / 2) / scale.value;
+  const mx = (clientX - rect.left) * (el.width / Math.max(1, rect.width));
+  const my = (clientY - rect.top) * (el.height / Math.max(1, rect.height));
+  const x = originX.value + (mx - el.width / 2) / scale.value;
+  const y = originY.value + (my - el.height / 2) / scale.value;
   let best: { targetType: "outpost" | "city" | "market"; targetId: number; label: string; d: number } | null = null;
   const consider = (
     targetType: "outpost" | "city" | "market",
@@ -192,7 +213,7 @@ function hit(clientX: number, clientY: number): void {
     py: number
   ) => {
     const d = Math.hypot(px - x, py - y);
-    if (d <= 1.2 && (!best || d < best.d)) {
+    if (d <= 1.8 && (!best || d < best.d)) {
       best = { targetType, targetId, label, d };
     }
   };
@@ -271,8 +292,8 @@ onUnmounted(() => {
 <template>
   <canvas
     ref="canvas"
-    width="600"
-    height="360"
+    width="800"
+    height="440"
     class="map"
     @pointerdown="onPointerDown"
     @pointermove="onPointerMove"

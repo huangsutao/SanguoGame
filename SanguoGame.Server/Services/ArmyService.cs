@@ -109,7 +109,7 @@ public sealed class ArmyService
             marches.Select(m => MapMarch(m, true)).ToList());
     }
 
-    internal static MarchDto MapMarch(MarchEntity march, bool mine) =>
+    internal static MarchDto MapMarch(MarchEntity march, bool mine, bool includeTroops = true) =>
         new(
             march.Id,
             march.TargetType,
@@ -118,7 +118,7 @@ public sealed class ArmyService
             march.FromY,
             march.ToX,
             march.ToY,
-            new TroopDto(march.Infantry, march.Archer, march.Cavalry),
+            includeTroops ? new TroopDto(march.Infantry, march.Archer, march.Cavalry) : null,
             march.DepartAt,
             march.ArriveAt,
             march.Status,

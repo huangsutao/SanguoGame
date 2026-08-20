@@ -142,7 +142,7 @@ public sealed class BuildingService
         var finishAt = planned.Item3;
         _jobs.Schedule<CompleteInnerBuildingJob>(
             job => job.Execute(city.Id, buildingType, targetLevel),
-            new DateTimeOffset(DateTime.SpecifyKind(finishAt, DateTimeKind.Utc)));
+            UtcSchedule.At(finishAt));
     }
 
     public async Task CompleteAsync(long cityId, string buildingType, int targetLevel, CancellationToken cancellationToken)
@@ -162,15 +162,37 @@ public sealed class BuildingService
                     return ((BuildingEntity?)null, lockedCity);
                 }
 
+                if (row.FinishAt is { } finish && finish > DateTime.UtcNow.AddSeconds(2))
+                {
+                    _jobs.Schedule<CompleteInnerBuildingJob>(
+                        job => job.Execute(cityId, buildingType, targetLevel),
+                        UtcSchedule.At(finish));
+                    return ((BuildingEntity?)null, lockedCity);
+                }
+
                 var now = DateTime.UtcNow;
+                var previousLevel = row.Level;
                 row.Level = targetLevel;
                 row.Status = BuildingStatus.Idle;
                 row.TargetLevel = null;
                 row.FinishAt = null;
                 row.UpdatedAt = now;
-                if (OuterFieldCatalog.IsField(buildingType) && row.LastCollectedAt is null && targetLevel >= 1)
+                if (OuterFieldCatalog.IsField(buildingType) && targetLevel >= 1)
                 {
-                    row.LastCollectedAt = now;
+                    var def = OuterFieldCatalog.Find(buildingType);
+                    if (def is not null && row.LastCollectedAt is not null && previousLevel >= 1)
+                    {
+                        var pending = FieldProduction.Pending(
+                            def.RatePerHour(previousLevel),
+                            def.FieldCap(previousLevel),
+                            row.LastCollectedAt,
+                            now);
+                        row.LastCollectedAt = FieldProduction.AfterCollect(now, pending, def.RatePerHour(targetLevel));
+                    }
+                    else if (row.LastCollectedAt is null)
+                    {
+                        row.LastCollectedAt = now;
+                    }
                 }
 
                 await _orm.Update<BuildingEntity>()

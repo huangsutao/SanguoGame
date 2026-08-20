@@ -5,7 +5,13 @@ namespace SanguoGame.Server.Services;
 
 internal static class WorldOccupancy
 {
-    public static bool IsOccupied(IFreeSql orm, int x, int y) =>
-        orm.Select<CityEntity>().Any(c => c.X == x && c.Y == y)
-        || orm.Select<OutpostEntity>().Any(o => o.X == x && o.Y == y);
+    public static async Task<bool> IsOccupiedAsync(IFreeSql orm, int x, int y, CancellationToken cancellationToken)
+    {
+        if (await orm.Select<CityEntity>().AnyAsync(c => c.X == x && c.Y == y, cancellationToken))
+        {
+            return true;
+        }
+
+        return await orm.Select<OutpostEntity>().AnyAsync(o => o.X == x && o.Y == y, cancellationToken);
+    }
 }

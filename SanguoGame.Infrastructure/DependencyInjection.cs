@@ -16,7 +16,7 @@ public static class DependencyInjection
         var connectionString = configuration.GetConnectionString("Default")
             ?? throw new InvalidOperationException("缺少 ConnectionStrings:Default");
 
-        var autoSync = configuration.GetValue("FreeSql:AutoSyncStructure", true);
+        var autoSync = configuration.GetValue("FreeSql:AutoSyncStructure", false);
 
         services.AddSingleton<IFreeSql>(_ =>
         {

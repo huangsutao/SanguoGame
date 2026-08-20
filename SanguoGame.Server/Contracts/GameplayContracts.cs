@@ -57,7 +57,7 @@ public sealed record MarchDto(
     int FromY,
     int ToX,
     int ToY,
-    TroopDto Troops,
+    TroopDto? Troops,
     DateTime DepartAt,
     DateTime ArriveAt,
     MarchStatus Status,

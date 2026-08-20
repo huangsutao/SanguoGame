@@ -140,7 +140,17 @@ docker compose up -d
 dotnet run --project SanguoGame.Server --launch-profile http
 ```
 
-默认 HTTP 地址：`http://localhost:5124`。连接串见 `SanguoGame.Server/appsettings.json`（库名 `sanguogame`，用户 `sanguo`）。开发环境会映射 OpenAPI，并自动同步表结构。
+默认 HTTP 地址：`http://localhost:5124`。本地默认连接 Docker Compose 的 PostgreSQL（库名 `sanguogame`，用户 `sanguo`）。开发环境会映射 OpenAPI，并自动同步表结构。
+
+生产环境不要把密钥写进仓库，用环境变量覆盖：
+
+```bash
+ConnectionStrings__Default="Host=...;Port=5432;Database=postgres;Username=...;Password=...;SSL Mode=Require"
+Jwt__SigningKey="至少 32 字符的独立密钥"
+Cors__Origins__0="https://your.frontend.origin"
+```
+
+非 Development 环境会拒绝开发用 JWT 密钥，并禁止 `FreeSql:AutoSyncStructure`。
 
 探活：`GET /api/system/ping`。账号与建城接口见 [账号、角色与建城](Docs/design-account-city.md)。
 

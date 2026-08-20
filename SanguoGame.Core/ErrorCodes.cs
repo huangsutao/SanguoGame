@@ -67,6 +67,9 @@ public static class ErrorCodes
     /// <summary>行军数量已达上限。</summary>
     public const int MarchLimit = 40917;
 
+    /// <summary>请求过于频繁。</summary>
+    public const int TooManyRequests = 42900;
+
     /// <summary>未处理的服务器异常。</summary>
     public const int InternalError = 50000;
 }

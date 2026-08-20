@@ -85,7 +85,9 @@ attackerWon = atk' >= def'          # 战力相等攻方胜
 剩余 = floor(原兵力 * (1 - 伤亡率))，每种兵分别取整
 ```
 
-NPC 战败：驻军清零，`recoverAt = now + OutpostRecoverSeconds`（默认 7200）。到期后按目录恢复满编（读取时惰性恢复，不另开 tick）。NPC 战胜：驻军按守方剩余写回。
+常驻 NPC 战败：驻军清零，`recoverAt = now + OutpostRecoverSeconds`（默认 7200）。到期后按目录恢复满编（读取时惰性恢复，不另开 tick）。NPC 战胜：驻军按守方剩余写回。
+
+流寇（`kind = roaming`）战败：**删掉该据点**，不恢复。途中据点到期或被他人打掉：按「目标据点已消失」收兵。见 [大地图](design-world-map.md)。
 
 攻方无论胜负，存活兵力加回出发城（受 `troopCap` 截断，超出部分消失）。战胜 NPC 时把据点战利品加入攻方仓库（受 `resourceCap` 截断）。
 

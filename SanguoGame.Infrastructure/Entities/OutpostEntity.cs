@@ -1,4 +1,5 @@
 using FreeSql.DataAnnotations;
+using SanguoGame.Core.World;
 
 namespace SanguoGame.Infrastructure.Entities;
 
@@ -26,4 +27,10 @@ public sealed class OutpostEntity
 
     [Column(Name = "recover_at")]
     public DateTime? RecoverAt { get; set; }
+
+    [Column(Name = "kind", IsNullable = false)]
+    public OutpostKind Kind { get; set; }
+
+    [Column(Name = "expires_at")]
+    public DateTime? ExpiresAt { get; set; }
 }

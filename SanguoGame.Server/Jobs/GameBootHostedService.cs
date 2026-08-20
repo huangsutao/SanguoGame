@@ -32,6 +32,7 @@ public sealed class GameBootHostedService : BackgroundService
                 await transports.RecoverDueAsync(stoppingToken);
                 await world.RecoverDueOutpostsAsync(stoppingToken);
                 await seed.EnsureWorldAsync(stoppingToken);
+                await world.TickRoamingAsync(stoppingToken);
                 return;
             }
             catch (Exception ex) when (round < attempts && !stoppingToken.IsCancellationRequested)

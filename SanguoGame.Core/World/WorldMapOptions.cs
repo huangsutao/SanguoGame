@@ -12,6 +12,12 @@ public sealed class WorldMapOptions
 
     public int OutpostCount { get; set; } = 24;
 
+    public int RoamingOutpostCount { get; set; } = 8;
+
+    public int RoamingOutpostLifetimeSeconds { get; set; } = 1800;
+
+    public int RoamingOutpostTickMinutes { get; set; } = 1;
+
     public int MarketCount { get; set; } = 8;
 
     public int AiCityCount { get; set; } = 8;

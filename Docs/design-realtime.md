@@ -59,7 +59,7 @@ const connection = new signalR.HubConnectionBuilder()
 
 建造 Job：`CompleteInnerBuilding(cityId, buildingType, targetLevel)`，在 `finishAt` 触发。行军 Job：`CompleteMarch(marchId)`，在 `arriveAt` 触发。AI：周期任务 `AiTick`。失败可重试；业务幂等。
 
-进程重启后未到期任务仍由 Hangfire 执行。启动时扫描已到期仍为 `upgrading` 的建筑、已到期仍为 `marching` 的行军、已到期仍为 `inTransit` 的运输并补结算；并补齐 NPC 据点、市集与 AI 城。
+进程重启后未到期任务仍由 Hangfire 执行。启动时扫描已到期仍为 `upgrading` 的建筑、已到期仍为 `marching` 的行军、已到期仍为 `inTransit` 的运输并补结算；并补齐常驻 NPC 据点、市集与 AI 城，再补一轮流寇刷新。流寇周期任务 `RoamingOutpostTick` 见 [大地图](design-world-map.md)。
 
 ## 按城串行
 

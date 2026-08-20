@@ -229,6 +229,8 @@ export interface WorldOutpostDto {
   x: number;
   y: number;
   garrison: number;
+  kind?: "permanent" | "roaming";
+  expiresAt?: string;
 }
 
 export interface WorldDto {

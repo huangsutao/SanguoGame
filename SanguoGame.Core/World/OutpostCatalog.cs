@@ -2,6 +2,12 @@ using SanguoGame.Core.Buildings;
 
 namespace SanguoGame.Core.World;
 
+public enum OutpostKind
+{
+    Permanent = 0,
+    Roaming = 1
+}
+
 public sealed record OutpostDef(
     string Type,
     string Name,
@@ -11,18 +17,30 @@ public sealed record OutpostDef(
 
 public static class OutpostCatalog
 {
-    public static IReadOnlyList<OutpostDef> All { get; } =
+    public static IReadOnlyList<OutpostDef> Permanent { get; } =
     [
         new("village", "村落", 40, 200, new ResourceAmount(80, 80, 40, 20)),
         new("camp", "营寨", 80, 500, new ResourceAmount(150, 150, 80, 40)),
         new("fortress", "关隘", 150, 1000, new ResourceAmount(300, 250, 150, 80))
     ];
 
+    public static IReadOnlyList<OutpostDef> Roaming { get; } =
+    [
+        new("bandit", "流寇", 25, 120, new ResourceAmount(100, 80, 30, 20)),
+        new("raider", "马贼", 50, 280, new ResourceAmount(180, 120, 80, 40)),
+        new("warband", "流寇大营", 90, 600, new ResourceAmount(280, 220, 120, 60))
+    ];
+
+    public static IReadOnlyList<OutpostDef> All { get; } = [.. Permanent, .. Roaming];
+
     public static OutpostDef? Find(string type) =>
         All.FirstOrDefault(def => def.Type.Equals(type, StringComparison.OrdinalIgnoreCase));
 
     public static OutpostDef Require(string type) =>
         Find(type) ?? throw new InvalidOperationException($"未知据点类型 {type}");
+
+    public static bool IsExpired(OutpostKind kind, DateTime? expiresAt, DateTime now) =>
+        kind == OutpostKind.Roaming && expiresAt is { } until && until <= now;
 }
 
 public static class AiTemplates

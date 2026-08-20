@@ -130,8 +130,25 @@ function draw(): void {
 
   for (const item of props.world.outposts) {
     const p = toScreen(item.x, item.y);
-    ctx.fillStyle = item.garrison > 0 ? "#6b5b3a" : "#3a342a";
-    ctx.fillRect(p.sx - 4, p.sy - 4, 8, 8);
+    const roaming = item.kind === "roaming";
+    ctx.fillStyle = roaming
+      ? item.garrison > 0
+        ? "#c45a2a"
+        : "#5a3a2a"
+      : item.garrison > 0
+        ? "#6b5b3a"
+        : "#3a342a";
+    if (roaming) {
+      ctx.beginPath();
+      ctx.moveTo(p.sx, p.sy - 5);
+      ctx.lineTo(p.sx + 5, p.sy);
+      ctx.lineTo(p.sx, p.sy + 5);
+      ctx.lineTo(p.sx - 5, p.sy);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      ctx.fillRect(p.sx - 4, p.sy - 4, 8, 8);
+    }
   }
 
   for (const item of props.world.markets ?? []) {
@@ -186,7 +203,13 @@ function hit(clientX: number, clientY: number): void {
     consider("city", item.id, `${item.name} (${item.x},${item.y})`, item.x, item.y);
   }
   for (const item of props.world.outposts) {
-    consider("outpost", item.id, `${item.name}`, item.x, item.y);
+    let label = item.name;
+    if (item.kind === "roaming" && item.expiresAt) {
+      const left = Math.max(0, Date.parse(item.expiresAt) - Date.now());
+      const min = Math.max(1, Math.ceil(left / 60000));
+      label = `${item.name}（${min}分钟后消失）`;
+    }
+    consider("outpost", item.id, label, item.x, item.y);
   }
   for (const item of props.world.markets ?? []) {
     consider("market", item.id, item.name, item.x, item.y);

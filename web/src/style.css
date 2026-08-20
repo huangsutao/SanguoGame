@@ -65,9 +65,22 @@ body {
   gap: 8px;
 }
 
+.tabs.four,
+.tabs.play {
+  margin: 12px 0 4px;
+}
+
 .tabs.four {
   grid-template-columns: repeat(4, 1fr);
-  margin: 12px 0 4px;
+}
+
+.tabs.play {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.tabs.play button {
+  flex: 1 1 22%;
 }
 
 .tabs button,

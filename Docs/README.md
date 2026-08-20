@@ -27,3 +27,6 @@
 | [design-ai.md](design-ai.md) | AI 玩家决策与 tick | 已定稿 |
 | [design-realtime.md](design-realtime.md) | HTTP 指令、SignalR 推送、Hangfire 到点任务 | 已定稿 |
 | [design-frontend-comm.md](design-frontend-comm.md) | Vue 独立工程、CORS / 代理、上线反代 | 已定稿 |
+| [design-mail.md](design-mail.md) | 站内信与战报 / 联盟通知 | 已定稿 |
+| [design-ranking.md](design-ranking.md) | 国力 / 兵力 / 掠夺排行 | 已定稿 |
+| [design-alliance.md](design-alliance.md) | 联盟与同联盟免战 | 已定稿 |

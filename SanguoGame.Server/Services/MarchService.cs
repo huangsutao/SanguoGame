@@ -7,6 +7,7 @@ using SanguoGame.Core;
 using SanguoGame.Core.Army;
 using SanguoGame.Core.Buildings;
 using SanguoGame.Core.World;
+using SanguoGame.Core.Social;
 using SanguoGame.Infrastructure.Entities;
 using SanguoGame.Server.Contracts;
 using SanguoGame.Server.Hubs;
@@ -21,19 +22,25 @@ public sealed class MarchService
     private readonly IHubContext<GameHub> _hub;
     private readonly WorldMapOptions _map;
     private readonly ArmyService _army;
+    private readonly MailService _mail;
+    private readonly AllianceService _alliances;
 
     public MarchService(
         IFreeSql orm,
         IBackgroundJobClient jobs,
         IHubContext<GameHub> hub,
         IOptions<WorldMapOptions> map,
-        ArmyService army)
+        ArmyService army,
+        MailService mail,
+        AllianceService alliances)
     {
         _orm = orm;
         _jobs = jobs;
         _hub = hub;
         _map = map.Value;
         _army = army;
+        _mail = mail;
+        _alliances = alliances;
     }
 
     public async Task<ArmyOverviewDto> StartAsync(long accountId, MarchRequest request, CancellationToken cancellationToken)
@@ -244,7 +251,8 @@ public sealed class MarchService
             var summary = outcome.AttackerWon
                 ? $"攻克{outpost.Name}，缴获粮{loot.Grain} 木{loot.Wood} 铁{loot.Iron} 铜{loot.Copper}"
                 : $"攻打{outpost.Name}失利";
-            return await PersistAsync(transaction, current, outcome, loot, summary, ct);
+            return await PersistAsync(
+                transaction, current, outcome, loot, summary, attacker.CharacterId, null, ct);
         }, cancellationToken);
     }
 
@@ -262,7 +270,9 @@ public sealed class MarchService
             var now = DateTime.UtcNow;
             var atkBuildings = await LoadBuildingsAsync(transaction, attacker.Id, ct);
             var atkBarracks = atkBuildings.FirstOrDefault(b => b.Type == "barracks")?.Level ?? 0;
-            if (CityStats.IsProtected(defender, now))
+            var allied = await _alliances.AreAlliedByCityAsync(attacker.Id, defender.Id, cancellationToken);
+            var protectedCity = CityStats.IsProtected(defender, now);
+            if (allied || protectedCity)
             {
                 ReturnTroops(attacker, new TroopCount(current.Infantry, current.Archer, current.Cavalry), InnerBuildingCatalog.TroopCap(atkBarracks));
                 await SaveCityAsync(transaction, attacker, ct);
@@ -273,7 +283,9 @@ public sealed class MarchService
                     CityStats.Troops(defender),
                     CityStats.Troops(defender),
                     SeedOf(current.Id));
-                return await PersistAsync(transaction, current, skipped, ResourceAmount.Zero, "目标已进入保护", ct);
+                var reason = allied ? "同联盟不可交战" : "目标已进入保护";
+                return await PersistAsync(
+                    transaction, current, skipped, ResourceAmount.Zero, reason, attacker.CharacterId, defender.CharacterId, ct);
             }
 
             var defBuildings = await LoadBuildingsAsync(transaction, defender.Id, ct);
@@ -318,7 +330,8 @@ public sealed class MarchService
             var summary = outcome.AttackerWon
                 ? $"攻打{defender.Name}获胜，掠夺粮{loot.Grain} 木{loot.Wood} 铁{loot.Iron} 铜{loot.Copper}"
                 : $"攻打{defender.Name}失利";
-            return await PersistAsync(transaction, current, outcome, loot, summary, ct);
+            return await PersistAsync(
+                transaction, current, outcome, loot, summary, attacker.CharacterId, defender.CharacterId, ct);
         }, cancellationToken);
     }
 
@@ -349,6 +362,11 @@ public sealed class MarchService
         if (city.Id == fromCityId)
         {
             throw new BizException(ErrorCodes.CannotAttackSelf, "不能进攻自己的城");
+        }
+
+        if (await _alliances.AreAlliedByCityAsync(fromCityId, targetId, cancellationToken))
+        {
+            throw new BizException(ErrorCodes.SameAlliance, "同联盟不可交战");
         }
 
         if (CityStats.IsProtected(city, now))
@@ -456,7 +474,7 @@ public sealed class MarchService
         ReturnTroops(attacker, troops, InnerBuildingCatalog.TroopCap(barracks));
         await SaveCityAsync(transaction, attacker, cancellationToken);
         var outcome = new BattleOutcome(false, troops, troops, TroopCount.Zero, TroopCount.Zero, SeedOf(march.Id));
-        return await PersistAsync(transaction, march, outcome, ResourceAmount.Zero, summary, cancellationToken);
+        return await PersistAsync(transaction, march, outcome, ResourceAmount.Zero, summary, attacker.CharacterId, null, cancellationToken);
     }
 
     private async Task<BattleReportDto> PersistAsync(
@@ -465,6 +483,8 @@ public sealed class MarchService
         BattleOutcome outcome,
         ResourceAmount loot,
         string summary,
+        long attackerCharacterId,
+        long? defenderCharacterId,
         CancellationToken cancellationToken)
     {
         march.Status = MarchStatus.Settled;
@@ -502,7 +522,30 @@ public sealed class MarchService
             CreatedAt = DateTime.UtcNow
         };
         entity.Id = await _orm.Insert(entity).WithTransaction(transaction).ExecuteIdentityAsync(cancellationToken);
-        return MapReport(entity);
+        var report = MapReport(entity);
+        await _mail.SendAsync(
+            attackerCharacterId,
+            MailType.Battle,
+            outcome.AttackerWon ? "出征获胜" : "出征结束",
+            summary,
+            "report",
+            entity.Id,
+            cancellationToken,
+            transaction);
+        if (defenderCharacterId is long defenderId && defenderId != attackerCharacterId)
+        {
+            await _mail.SendAsync(
+                defenderId,
+                MailType.Battle,
+                "本城遭到攻击",
+                summary,
+                "report",
+                entity.Id,
+                cancellationToken,
+                transaction);
+        }
+
+        return report;
     }
 
     private async Task<MarchEntity?> LoadMarchAsync(DbTransaction transaction, long id, CancellationToken cancellationToken)

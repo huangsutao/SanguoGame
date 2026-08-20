@@ -501,6 +501,38 @@ public sealed class AllApiDataTests
     }
 
     [SkippableFact]
+    public async Task Alliance_LeaderLeave_TransfersToEarliestMember()
+    {
+        SkipIfUnavailable();
+        var leader = new ApiClient(_factory.CreateJsonClient());
+        var lead = await leader.RegisterPlayerAsync("tl");
+        var tag = Guid.NewGuid().ToString("N")[..6];
+        var (_, created) = await leader.Post<AllianceDetailDto>("/api/alliances", new { name = "传" + tag });
+        Assert.Equal(0, created.Code);
+
+        var member = new ApiClient(_factory.CreateJsonClient());
+        var m = await member.RegisterPlayerAsync("tm");
+        var (_, invited) = await leader.Post<object?>("/api/alliances/invite", new { characterName = m.CharacterName });
+        Assert.Equal(0, invited.Code);
+        var (_, pending) = await member.Get<AlliancePendingDto>("/api/alliances/pending");
+        var invite = Assert.Single(pending.Data!.Invites);
+        Assert.Equal(0, (await member.Post<object?>($"/api/alliances/invites/{invite.Id}/accept")).Body.Code);
+
+        var (_, left) = await leader.Post<object?>("/api/alliances/leave");
+        Assert.Equal(0, left.Code);
+        var (_, gone) = await leader.Get<AllianceDetailDto>("/api/alliances/me");
+        Assert.Equal(ErrorCodes.NotInAlliance, gone.Code);
+
+        var (_, mine) = await member.Get<AllianceDetailDto>("/api/alliances/me");
+        Assert.Equal(0, mine.Code);
+        Assert.Equal(created.Data!.Id, mine.Data?.Id);
+        Assert.Equal(AllianceRole.Leader, mine.Data?.MyRole);
+        Assert.Equal(m.CharacterId, mine.Data?.LeaderCharacterId);
+        Assert.Equal(1, mine.Data?.MemberCount);
+        Assert.DoesNotContain(mine.Data!.Members, item => item.CharacterId == lead.CharacterId);
+    }
+
+    [SkippableFact]
     public async Task Alliance_SoleLeaderLeave_Dissolves()
     {
         SkipIfUnavailable();

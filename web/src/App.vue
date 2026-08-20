@@ -1172,8 +1172,10 @@ async function submitLogout(): Promise<void> {
               <span><img src="/art/marker-outpost.jpg" alt="" />常驻据点</span>
               <span><img src="/art/marker-roaming.jpg" alt="" />限时流寇</span>
               <span><img src="/art/marker-market.jpg" alt="" />市集</span>
+              <span><img src="/art/marker-march.jpg" alt="" />行军（沿线走动）</span>
+              <span><img src="/art/marker-cart.jpg" alt="" />运输马车</span>
             </div>
-            <p class="hint">拖拽移动，滚轮缩放。点击据点或玩家城出征，点击市集兑换。</p>
+            <p class="hint">拖拽移动，滚轮缩放。行军旗和运输车会沿线走动。点击据点或玩家城出征，点击市集兑换。</p>
             <WorldMap :world="world" @select="onSelectTarget" />
           </section>
 

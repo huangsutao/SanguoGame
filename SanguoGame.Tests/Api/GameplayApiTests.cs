@@ -70,13 +70,7 @@ public sealed class GameplayApiTests
         var (_, recruited) = await api.Post<ArmyOverviewDto>("/api/army/recruit", new { troopType = "infantry", count = 20 });
         Assert.Equal(0, recruited.Code);
 
-        var ox = Math.Min(39, x + 1);
-        var oy = y == ox && x == y ? Math.Min(39, y + 1) : y;
-        if (ox == x && oy == y)
-        {
-            ox = x == 0 ? 1 : x - 1;
-        }
-
+        var (ox, oy) = await _factory.PickEmptyCellAsync(x, y);
         var outpostId = await _factory.InsertOutpostAsync(ox, oy);
         var (_, marched) = await api.Post<ArmyOverviewDto>("/api/army/march", new
         {

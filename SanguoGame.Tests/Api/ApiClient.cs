@@ -53,13 +53,36 @@ public sealed class ApiClient
 
     public async Task<(long CityId, int X, int Y)> RegisterCityAsync(string? prefix = null)
     {
+        var player = await RegisterPlayerAsync(prefix);
+        return (player.CityId, player.X, player.Y);
+    }
+
+    public async Task<TestPlayer> RegisterPlayerAsync(string? prefix = null)
+    {
         var tag = (prefix ?? "p") + Guid.NewGuid().ToString("N")[..8];
-        await RegisterAsync("u" + tag);
-        var (_, character) = await Post<CharacterResponse>("/api/characters", new { name = "角" + tag[..8] });
+        var username = "u" + tag;
+        await RegisterAsync(username);
+        var characterName = "角" + tag[..8];
+        var (_, character) = await Post<CharacterResponse>("/api/characters", new { name = characterName });
         Assert.Equal(0, character.Code);
+        Assert.NotNull(character.Data);
         var (_, city) = await Post<CityResponse>("/api/city/found");
         Assert.Equal(0, city.Code);
         Assert.NotNull(city.Data);
-        return (city.Data.Id, city.Data.X, city.Data.Y);
+        return new TestPlayer(
+            username,
+            character.Data.Id,
+            character.Data.Name,
+            city.Data.Id,
+            city.Data.X,
+            city.Data.Y);
     }
 }
+
+public sealed record TestPlayer(
+    string Username,
+    long CharacterId,
+    string CharacterName,
+    long CityId,
+    int X,
+    int Y);

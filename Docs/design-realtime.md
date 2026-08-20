@@ -1,6 +1,6 @@
 # 实时推送与定时任务
 
-- **状态：** 已定稿（第 2 步所需：Hub 鉴权、Hangfire、建造到点）
+- **状态：** 已定稿（Hub 鉴权、Hangfire、建造 / 行军到点、AI tick）
 - **对应功能：** HTTP 指令通道、SignalR、建造 / 行军到点
 
 同一 ASP.NET Core 项目同时宿主 API 与 Hub。下指令走 HTTP，等结果 / 被打走推送。城内建造细则见 [城内建筑](design-inner-city.md)。
@@ -18,7 +18,7 @@
 
 JSON 信封见 [统一协议](design-api.md)。身份：`Authorization: Bearer <JWT>`，`[Authorize]`。
 
-耗时操作立刻返回 `finishAt` / `arriveAt`，完成后再推送。城内升级：`POST /api/buildings/upgrade`。
+耗时操作立刻返回 `finishAt` / `arriveAt`，完成后再推送。城内 / 城墙 / 城外升级：`POST /api/buildings|walls|fields/upgrade`。出征：`POST /api/army/march`。
 
 ## SignalR
 
@@ -55,9 +55,9 @@ const connection = new signalR.HubConnectionBuilder()
 
 延迟任务存 PostgreSQL **独立 schema `hangfire`**，不经过 FreeSql、不用 EF。连接串与游戏库相同（`ConnectionStrings:Default`）。`PrepareSchemaIfNecessary = true`。
 
-建造 Job：`CompleteInnerBuilding(cityId, buildingType, targetLevel)`，在 `finishAt` 触发。失败可重试；业务幂等（已是目标等级或非 `upgrading` 则直接成功）。
+建造 Job：`CompleteInnerBuilding(cityId, buildingType, targetLevel)`，在 `finishAt` 触发。行军 Job：`CompleteMarch(marchId)`，在 `arriveAt` 触发。AI：周期任务 `AiTick`。失败可重试；业务幂等。
 
-进程重启后未到期任务仍由 Hangfire 执行。启动时可扫描已到期仍为 `upgrading` 的行并补一次结算，防止 Job 丢失。
+进程重启后未到期任务仍由 Hangfire 执行。启动时扫描已到期仍为 `upgrading` 的建筑、已到期仍为 `marching` 的行军并补结算；并补齐 NPC 据点与 AI 城。
 
 ## 按城串行
 

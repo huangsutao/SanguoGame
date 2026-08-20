@@ -85,13 +85,19 @@
 | `40907` | 本城建造队列占用中 |
 | `40908` | 建筑已满级 |
 | `40909` | 建筑前置未满足 |
+| `40910` | 兵力不足 |
+| `40912` | 目标处于保护期 |
+| `40914` | 不能进攻自己的城 |
+| `40915` | 兵营等级不足（未解锁该兵种） |
+| `40916` | 超出带兵上限 |
+| `40917` | 行军数量已达上限 |
 | `50000` | 未处理异常 |
 
-账号 / 建城见 [账号、角色与建城](design-account-city.md)；城内建筑见 [城内建筑](design-inner-city.md)。后续玩法继续用 `409xx` 细分。
+账号 / 建城见 [账号、角色与建城](design-account-city.md)；城内建筑见 [城内建筑](design-inner-city.md)；行军见 [行军战斗](design-march-battle.md)；PvP 见 [玩家对战](design-pvp.md)。后续玩法继续用 `409xx` 细分。
 
 ## SignalR
 
-Hub：`/hubs/game`。推送 payload 使用同一信封字段（`code` / `message` / `data` / `traceId`）。具体事件名仍按 [实时推送](design-realtime.md)（`BuildComplete`、`MarchArrived`、`CityAttacked`）。当前 Hub 为空壳，尚未推送。
+Hub：`/hubs/game`。推送 payload 使用同一信封字段（`code` / `message` / `data` / `traceId`）。具体事件名仍按 [实时推送](design-realtime.md)（`BuildComplete`、`MarchArrived`、`CityAttacked`）。
 
 ## 示例
 

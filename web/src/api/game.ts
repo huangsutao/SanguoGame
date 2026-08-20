@@ -1,12 +1,17 @@
 import { request, requestEnvelope } from "./http";
 import type {
+  ArmyOverviewDto,
   BuildingsOverviewDto,
   CharacterResponse,
   CityResponse,
   FieldsCollectDto,
   FieldsOverviewDto,
+  PagedResult,
+  BattleReportDto,
   SessionResponse,
-  TokenResponse
+  TokenResponse,
+  WallsOverviewDto,
+  WorldDto
 } from "./types";
 
 export function register(username: string, password: string): Promise<TokenResponse> {
@@ -51,4 +56,38 @@ export function upgradeField(fieldType: string): Promise<FieldsOverviewDto> {
 
 export function collectFields(fieldType?: string): Promise<{ data: FieldsCollectDto; message: string }> {
   return requestEnvelope<FieldsCollectDto>("post", "/api/fields/collect", fieldType ? { fieldType } : {});
+}
+
+export function fetchWalls(): Promise<WallsOverviewDto> {
+  return request<WallsOverviewDto>("get", "/api/walls");
+}
+
+export function upgradeWall(wallType: string): Promise<WallsOverviewDto> {
+  return request<WallsOverviewDto>("post", "/api/walls/upgrade", { wallType });
+}
+
+export function fetchArmy(): Promise<ArmyOverviewDto> {
+  return request<ArmyOverviewDto>("get", "/api/army");
+}
+
+export function recruit(troopType: string, count: number): Promise<ArmyOverviewDto> {
+  return request<ArmyOverviewDto>("post", "/api/army/recruit", { troopType, count });
+}
+
+export function march(
+  targetType: string,
+  targetId: number,
+  infantry: number,
+  archer: number,
+  cavalry: number
+): Promise<ArmyOverviewDto> {
+  return request<ArmyOverviewDto>("post", "/api/army/march", { targetType, targetId, infantry, archer, cavalry });
+}
+
+export function fetchReports(page = 1): Promise<PagedResult<BattleReportDto>> {
+  return request<PagedResult<BattleReportDto>>("get", `/api/reports?page=${page}&pageSize=20`);
+}
+
+export function fetchWorld(): Promise<WorldDto> {
+  return request<WorldDto>("get", "/api/world");
 }

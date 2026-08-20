@@ -10,7 +10,8 @@ public enum BuildingCategory
 {
     Civil,
     Tech,
-    Military
+    Military,
+    Wall
 }
 
 public sealed record ResourceAmount(int Grain, int Wood, int Iron, int Copper)
@@ -43,7 +44,33 @@ public sealed record ResourceAmount(int Grain, int Wood, int Iron, int Copper)
     }
 
     public ResourceAmount Subtract(ResourceAmount cost) =>
-        new(Grain - cost.Grain, Wood - cost.Wood, Iron - cost.Iron, Copper - cost.Copper);
+        new(
+            Math.Max(0, Grain - cost.Grain),
+            Math.Max(0, Wood - cost.Wood),
+            Math.Max(0, Iron - cost.Iron),
+            Math.Max(0, Copper - cost.Copper));
+
+    public ResourceAmount Add(ResourceAmount other) =>
+        new(Grain + other.Grain, Wood + other.Wood, Iron + other.Iron, Copper + other.Copper);
+
+    public ResourceAmount ScaleFloor(double ratio) =>
+        new(
+            (int)Math.Floor(Grain * ratio),
+            (int)Math.Floor(Wood * ratio),
+            (int)Math.Floor(Iron * ratio),
+            (int)Math.Floor(Copper * ratio));
+
+    public ResourceAmount Min(ResourceAmount other) =>
+        new(
+            Math.Min(Grain, other.Grain),
+            Math.Min(Wood, other.Wood),
+            Math.Min(Iron, other.Iron),
+            Math.Min(Copper, other.Copper));
+
+    public ResourceAmount WithCap(int cap) =>
+        new(Math.Min(Grain, cap), Math.Min(Wood, cap), Math.Min(Iron, cap), Math.Min(Copper, cap));
+
+    public int Total => Grain + Wood + Iron + Copper;
 
     public int Get(string resource) => resource switch
     {

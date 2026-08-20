@@ -19,23 +19,23 @@
 
 | 项 | 值 |
 |----|----|
-| 已完成 | 第 0～2 步（骨架、账号建城、城内建筑） |
-| 正在做 / 下一步 | **第 3 步进行中：城外资源田**（API / 网页已落地，待联调） |
-| 立刻要写的文档 | 本步设计已定：[城外资源](design-outer-resources.md) |
+| 已完成 | 第 0～8 步（第一版玩法闭环：建城、建造、田、城墙、NPC/PvP、AI、地图） |
+| 正在做 / 下一步 | 联调与数值微调；外围（联盟 / 邮件 / 排行）另开设计 |
+| 立刻要写的文档 | 第一版设计均已定稿 |
 
 ## 总览
 
 | 步 | 内容 | 对应设计 | 本步首次接入 | 状态 |
 |----|------|----------|--------------|------|
 | 0 | 服务端骨架、统一信封、探活 | [统一协议](design-api.md)、[架构](design-architecture.md) | ASP.NET Core 9、CORS、空 Hub | **已完成** |
-| 1 | 账号、JWT、随机空地建主城 | [账号建城](design-account-city.md)、[大地图](design-world-map.md)（仅格子规则） | PostgreSQL、FreeSql、JWT | **API 已联调** |
+| 1 | 账号、JWT、随机空地建主城 | [账号建城](design-account-city.md)、[大地图](design-world-map.md)（仅格子规则） | PostgreSQL、FreeSql、JWT | **已完成** |
 | 2 | 城内建造 / 升级 + 到点完成 | [城内建筑](design-inner-city.md)、[实时推送](design-realtime.md) | Hangfire、行锁、SignalR `BuildComplete` | **已完成** |
-| 3 | 城外矿 / 木 / 田：产出与收取 | [城外资源](design-outer-resources.md) | （复用 2 的任务与锁） | **进行中** |
-| 4 | 城墙与基础城防 | [城墙](design-city-wall.md) | — | 未开始 |
-| 5 | 出兵打 NPC 据点 + 战报 | [行军战斗](design-march-battle.md)、[大地图](design-world-map.md)（据点） | SignalR `MarchArrived` | 未开始 |
-| 6 | 打玩家、掠夺、保护 CD | [PvP](design-pvp.md) | SignalR `CityAttacked` | 未开始 |
-| 7 | AI 玩家 | [AI](design-ai.md) | Hangfire AI tick | 未开始 |
-| 8 | 大地图表现与外围系统 | [前后端通讯](design-frontend-comm.md) 及后续新文档 | Pixi/Canvas 地图；联盟 / 邮件 / 排行另开设计 | 未开始 |
+| 3 | 城外矿 / 木 / 田：产出与收取 | [城外资源](design-outer-resources.md) | （复用 2 的任务与锁） | **已完成** |
+| 4 | 城墙与基础城防 | [城墙](design-city-wall.md) | — | **已完成** |
+| 5 | 出兵打 NPC 据点 + 战报 | [行军战斗](design-march-battle.md)、[大地图](design-world-map.md)（据点） | SignalR `MarchArrived` | **已完成** |
+| 6 | 打玩家、掠夺、保护 CD | [PvP](design-pvp.md) | SignalR `CityAttacked` | **已完成** |
+| 7 | AI 玩家 | [AI](design-ai.md) | Hangfire AI tick | **已完成** |
+| 8 | 大地图表现与外围系统 | [前后端通讯](design-frontend-comm.md) 及后续新文档 | Canvas 地图；联盟 / 邮件 / 排行另开设计 | **地图已完成** |
 
 网页端：第 1 步末搭最小 Vue（登录 + 我的城）；城内界面跟第 2 步；出征面板跟第 5 步；大地图画布放第 8 步。不要第 0 步先做空前端。
 
@@ -57,7 +57,7 @@
 
 ---
 
-## 第 1 步：账号 + 建主城（当前）
+## 第 1 步：账号 + 建主城（已完成）
 
 **目标：** 能注册登录，能在地图空地落下唯一主城，能查出「我的城」。
 
@@ -141,7 +141,7 @@
 
 ---
 
-## 第 3 步：城外资源田（进行中）
+## 第 3 步：城外资源田（已完成）
 
 **目标：** 城外矿 / 木 / 田可建可升，产出按时间结算，玩家可收取。
 

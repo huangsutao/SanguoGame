@@ -35,4 +35,7 @@ public static class InnerBuildingCatalog
 
     public static int PopulationCap(int houseLevel) =>
         50 + 100 * houseLevel;
+
+    public static int TroopCap(int barracksLevel) =>
+        30 + 40 * barracksLevel;
 }

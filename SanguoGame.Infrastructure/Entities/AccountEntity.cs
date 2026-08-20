@@ -18,6 +18,9 @@ public sealed class AccountEntity
     [Column(Name = "password_hash", StringLength = 256, IsNullable = false)]
     public string PasswordHash { get; set; } = "";
 
+    [Column(Name = "is_ai", IsNullable = false)]
+    public bool IsAi { get; set; }
+
     [Column(Name = "created_at", IsNullable = false)]
     public DateTime CreatedAt { get; set; }
 }

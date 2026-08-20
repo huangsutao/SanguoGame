@@ -35,7 +35,7 @@ public class Program
                     PrepareSchemaIfNecessary = true
                 }));
         builder.Services.AddHangfireServer();
-        builder.Services.AddHostedService<RecoverDueBuildingsHostedService>();
+        builder.Services.AddHostedService<GameBootHostedService>();
         builder.Services.AddSignalR()
             .AddJsonProtocol(options =>
             {
@@ -91,6 +91,12 @@ public class Program
 
         app.MapControllers();
         app.MapHub<GameHub>("/hubs/game");
+
+        var aiTickMinutes = Math.Max(1, app.Configuration.GetValue("WorldMap:AiTickMinutes", 5));
+        RecurringJob.AddOrUpdate<AiTickJob>(
+            "ai-tick",
+            job => job.Execute(),
+            $"*/{aiTickMinutes} * * * *");
 
         app.Run();
     }

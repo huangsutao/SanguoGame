@@ -3,31 +3,60 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import {
   collectFields,
   createCharacter,
+  fetchArmy,
   fetchBuildings,
   fetchFields,
+  fetchReports,
   fetchSession,
+  fetchWalls,
+  fetchWorld,
   foundCity,
   login,
   logout,
+  march,
   register,
+  recruit,
   upgradeBuilding,
-  upgradeField
+  upgradeField,
+  upgradeWall
 } from "./api/game";
 import { createGameHub } from "./api/hub";
 import { ApiError } from "./api/types";
-import type { BuildingsOverviewDto, FieldsOverviewDto, SessionResponse } from "./api/types";
+import type {
+  ArmyOverviewDto,
+  BuildingsOverviewDto,
+  FieldsOverviewDto,
+  MarchTarget,
+  PagedResult,
+  BattleReportDto,
+  SessionResponse,
+  WallsOverviewDto,
+  WorldDto
+} from "./api/types";
 import { clearTokens, getAccessToken, getRefreshToken, saveTokens } from "./session";
 import type { HubConnection } from "@microsoft/signalr";
+import WorldMap from "./WorldMap.vue";
 
 const loading = ref(true);
 const busy = ref(false);
 const error = ref("");
 const notice = ref("");
 const mode = ref<"login" | "register">("login");
+const tab = ref<"city" | "army" | "map" | "reports">("city");
 const session = ref<SessionResponse | null>(null);
 const overview = ref<BuildingsOverviewDto | null>(null);
 const fields = ref<FieldsOverviewDto | null>(null);
+const walls = ref<WallsOverviewDto | null>(null);
+const army = ref<ArmyOverviewDto | null>(null);
+const world = ref<WorldDto | null>(null);
+const reports = ref<PagedResult<BattleReportDto> | null>(null);
+const selected = ref<MarchTarget | null>(null);
 const nowMs = ref(Date.now());
+const recruitType = ref("infantry");
+const recruitCount = ref(10);
+const marchInf = ref(20);
+const marchArc = ref(0);
+const marchCav = ref(0);
 
 const username = ref("");
 const password = ref("");
@@ -36,13 +65,19 @@ const characterName = ref("");
 const loggedIn = computed(() => session.value !== null);
 const hasCharacter = computed(() => Boolean(session.value?.character));
 const hasCity = computed(() => Boolean(session.value?.city));
-const queue = computed(() => overview.value?.queue ?? fields.value?.queue);
+const queue = computed(() => overview.value?.queue ?? fields.value?.queue ?? walls.value?.queue);
 
 const resourceLabel: Record<string, string> = {
   grain: "粮",
   wood: "木",
   iron: "铁",
   copper: "铜"
+};
+
+const troopLabel: Record<string, string> = {
+  infantry: "步兵",
+  archer: "弓兵",
+  cavalry: "骑兵"
 };
 
 let hub: HubConnection | null = null;
@@ -59,6 +94,7 @@ function queueName(type?: string): string {
   return (
     overview.value?.buildings.find((item) => item.type === type)?.name ??
     fields.value?.fields.find((item) => item.type === type)?.name ??
+    walls.value?.walls.find((item) => item.type === type)?.name ??
     type
   );
 }
@@ -92,10 +128,38 @@ function blockedText(reason?: string): string {
   }
 }
 
+function protectionText(until?: string): string {
+  if (!until) {
+    return "";
+  }
+  const ms = Date.parse(until) - nowMs.value;
+  if (ms <= 0) {
+    return "";
+  }
+  return `保护中 ${remainText(until)}`;
+}
+
 async function loadCity(): Promise<void> {
-  const [inner, outer] = await Promise.all([fetchBuildings(), fetchFields()]);
+  const [inner, outer, wall] = await Promise.all([fetchBuildings(), fetchFields(), fetchWalls()]);
   overview.value = inner;
   fields.value = outer;
+  walls.value = wall;
+}
+
+async function loadArmy(): Promise<void> {
+  army.value = await fetchArmy();
+}
+
+async function loadWorld(): Promise<void> {
+  world.value = await fetchWorld();
+}
+
+async function loadReports(): Promise<void> {
+  reports.value = await fetchReports();
+}
+
+async function loadAll(): Promise<void> {
+  await Promise.all([loadCity(), loadArmy(), loadWorld(), loadReports()]);
 }
 
 async function connectHub(): Promise<void> {
@@ -104,12 +168,21 @@ async function connectHub(): Promise<void> {
   hub.on("BuildComplete", () => {
     void loadCity();
   });
+  hub.on("MarchArrived", () => {
+    void loadAll();
+  });
+  hub.on("CityAttacked", () => {
+    void loadAll();
+    notice.value = "本城遭到攻击";
+  });
   await hub.start();
 }
 
 async function disconnectHub(): Promise<void> {
   if (hub) {
     hub.off("BuildComplete");
+    hub.off("MarchArrived");
+    hub.off("CityAttacked");
     await hub.stop();
     hub = null;
   }
@@ -146,11 +219,15 @@ watch(hasCity, async (ready) => {
   if (!ready) {
     overview.value = null;
     fields.value = null;
+    walls.value = null;
+    army.value = null;
+    world.value = null;
+    reports.value = null;
     await disconnectHub();
     return;
   }
   try {
-    await loadCity();
+    await loadAll();
     await connectHub();
   } catch (err) {
     fail(err);
@@ -215,7 +292,7 @@ async function submitUpgrade(type: string): Promise<void> {
   busy.value = true;
   try {
     overview.value = await upgradeBuilding(type);
-    fields.value = await fetchFields();
+    await Promise.all([loadCity()]);
   } catch (err) {
     fail(err);
   } finally {
@@ -229,7 +306,21 @@ async function submitFieldUpgrade(type: string): Promise<void> {
   busy.value = true;
   try {
     fields.value = await upgradeField(type);
-    overview.value = await fetchBuildings();
+    await loadCity();
+  } catch (err) {
+    fail(err);
+  } finally {
+    busy.value = false;
+  }
+}
+
+async function submitWallUpgrade(type: string): Promise<void> {
+  error.value = "";
+  notice.value = "";
+  busy.value = true;
+  try {
+    walls.value = await upgradeWall(type);
+    await loadCity();
   } catch (err) {
     fail(err);
   } finally {
@@ -254,6 +345,9 @@ async function submitCollect(type?: string): Promise<void> {
     if (overview.value) {
       overview.value = { ...overview.value, resources: result.data.resources, resourceCap: result.data.resourceCap };
     }
+    if (walls.value) {
+      walls.value = { ...walls.value, resources: result.data.resources, resourceCap: result.data.resourceCap };
+    }
     if (result.message && result.message !== "ok") {
       notice.value = result.message;
     }
@@ -262,6 +356,51 @@ async function submitCollect(type?: string): Promise<void> {
   } finally {
     busy.value = false;
   }
+}
+
+async function submitRecruit(): Promise<void> {
+  error.value = "";
+  notice.value = "";
+  busy.value = true;
+  try {
+    army.value = await recruit(recruitType.value, recruitCount.value);
+    overview.value = await fetchBuildings();
+  } catch (err) {
+    fail(err);
+  } finally {
+    busy.value = false;
+  }
+}
+
+async function submitMarch(): Promise<void> {
+  if (!selected.value) {
+    error.value = "请先在地图上点选目标";
+    return;
+  }
+  error.value = "";
+  notice.value = "";
+  busy.value = true;
+  try {
+    army.value = await march(
+      selected.value.targetType,
+      selected.value.targetId,
+      marchInf.value,
+      marchArc.value,
+      marchCav.value
+    );
+    await Promise.all([loadWorld(), loadReports(), loadCity()]);
+    notice.value = "已出征";
+  } catch (err) {
+    fail(err);
+  } finally {
+    busy.value = false;
+  }
+}
+
+function onSelectTarget(target: MarchTarget): void {
+  selected.value = target;
+  tab.value = "army";
+  notice.value = `已选择 ${target.label}`;
 }
 
 async function submitLogout(): Promise<void> {
@@ -279,6 +418,10 @@ async function submitLogout(): Promise<void> {
     session.value = null;
     overview.value = null;
     fields.value = null;
+    walls.value = null;
+    army.value = null;
+    world.value = null;
+    reports.value = null;
     password.value = "";
   }
 }
@@ -288,7 +431,7 @@ async function submitLogout(): Promise<void> {
   <main class="page" :class="{ wide: hasCity }">
     <header class="header">
       <h1>战国</h1>
-      <p class="sub">账号 · 角色 · 建城 · 城内 · 城外</p>
+      <p class="sub">建城 · 内政 · 城防 · 出征 · 地图</p>
     </header>
 
     <p v-if="loading" class="hint">加载中…</p>
@@ -336,97 +479,193 @@ async function submitLogout(): Promise<void> {
           </form>
         </section>
 
-        <section v-else class="block">
-          <h2>角色</h2>
-          <p>{{ session?.character?.name }}</p>
-        </section>
-
-        <section v-if="hasCharacter && !hasCity" class="block">
-          <h2>建立主城</h2>
+        <section v-else-if="!hasCity" class="block">
+          <h2>{{ session?.character?.name }}</h2>
           <p class="hint">坐标由服务端在地图空地随机选取，客户端不传位置。</p>
           <button type="button" :disabled="busy" @click="submitFoundCity">建城</button>
         </section>
 
-        <section v-if="hasCity" class="block city">
-          <h2>{{ session?.city?.name }}</h2>
-          <p class="coord">坐标 ({{ session?.city?.x }}, {{ session?.city?.y }})</p>
-        </section>
+        <template v-else>
+          <section class="block city">
+            <h2>{{ session?.city?.name }}</h2>
+            <p class="coord">坐标 ({{ session?.city?.x }}, {{ session?.city?.y }})</p>
+            <p v-if="protectionText(army?.protectionUntil)" class="hint">{{ protectionText(army?.protectionUntil) }}</p>
+          </section>
 
-        <section v-if="overview" class="block">
-          <h2>城内</h2>
-          <p class="res">
-            粮 {{ overview.resources.grain }} / 木 {{ overview.resources.wood }} / 铁 {{ overview.resources.iron }} / 铜
-            {{ overview.resources.copper }}
-            （上限 {{ overview.resourceCap }}，人口上限 {{ overview.populationCap }}）
-          </p>
-          <p v-if="queue" class="hint">
-            建造中：{{ queueName(queue.buildingType) }} → {{ queue.targetLevel }} 级，剩余
-            {{ remainText(queue.finishAt) }}
-          </p>
-          <ul class="buildings">
-            <li v-for="item in overview.buildings" :key="item.type">
-              <div>
-                <strong>{{ item.name }}</strong>
-                <span class="meta">{{ item.level }} / {{ item.maxLevel }} 级</span>
-                <span v-if="item.status === 'upgrading'" class="hint">
-                  升级中 {{ remainText(item.finishAt) }}
-                </span>
-                <span v-else-if="blockedText(item.blockedReason)" class="hint">{{
-                  blockedText(item.blockedReason)
-                }}</span>
-              </div>
-              <button
-                type="button"
-                :disabled="busy || item.status === 'upgrading' || Boolean(item.blockedReason)"
-                @click="submitUpgrade(item.type)"
-              >
-                {{ item.level === 0 ? "建造" : "升级" }}
-              </button>
-            </li>
-          </ul>
-        </section>
+          <div class="tabs four">
+            <button type="button" :class="{ active: tab === 'city' }" @click="tab = 'city'">城池</button>
+            <button type="button" :class="{ active: tab === 'army' }" @click="tab = 'army'">军队</button>
+            <button type="button" :class="{ active: tab === 'map' }" @click="tab = 'map'">地图</button>
+            <button type="button" :class="{ active: tab === 'reports' }" @click="tab = 'reports'">战报</button>
+          </div>
 
-        <section v-if="fields" class="block">
-          <h2>城外</h2>
-          <p class="res">
-            可收取：良田 {{ fields.fields.find((f) => f.type === "farm")?.pending ?? 0 }} 粮 / 木场
-            {{ fields.fields.find((f) => f.type === "lumber")?.pending ?? 0 }} 木 / 铁矿
-            {{ fields.fields.find((f) => f.type === "ironMine")?.pending ?? 0 }} 铁 / 铜矿
-            {{ fields.fields.find((f) => f.type === "copperMine")?.pending ?? 0 }} 铜
-          </p>
-          <p class="hint">主殿生效 1 级后可建；产出按上次收取时间现算，点收取才入库。</p>
-          <p>
-            <button type="button" :disabled="busy" @click="submitCollect()">一键收取</button>
-          </p>
-          <ul class="buildings">
-            <li v-for="item in fields.fields" :key="item.type">
-              <div>
-                <strong>{{ item.name }}</strong>
-                <span class="meta">{{ item.level }} / {{ item.maxLevel }} 级</span>
-                <span class="meta">{{ item.pending }} / {{ item.fieldCap }} {{ resourceLabel[item.resource] }}</span>
-                <span v-if="item.level >= 1" class="hint"> {{ item.ratePerHour }}/时 </span>
-                <span v-if="item.status === 'upgrading'" class="hint">
-                  升级中 {{ remainText(item.finishAt) }}
-                </span>
-                <span v-else-if="blockedText(item.blockedReason)" class="hint">{{
-                  blockedText(item.blockedReason)
-                }}</span>
-              </div>
-              <div class="actions">
-                <button type="button" :disabled="busy || item.level < 1" @click="submitCollect(item.type)">
-                  收取
-                </button>
+          <section v-if="tab === 'city' && overview" class="block">
+            <h2>城内</h2>
+            <p class="res">
+              粮 {{ overview.resources.grain }} / 木 {{ overview.resources.wood }} / 铁 {{ overview.resources.iron }} / 铜
+              {{ overview.resources.copper }}
+              （上限 {{ overview.resourceCap }}，人口上限 {{ overview.populationCap }}）
+            </p>
+            <p v-if="queue" class="hint">
+              建造中：{{ queueName(queue.buildingType) }} → {{ queue.targetLevel }} 级，剩余
+              {{ remainText(queue.finishAt) }}
+            </p>
+            <ul class="buildings">
+              <li v-for="item in overview.buildings" :key="item.type">
+                <div>
+                  <strong>{{ item.name }}</strong>
+                  <span class="meta">{{ item.level }} / {{ item.maxLevel }} 级</span>
+                  <span v-if="item.status === 'upgrading'" class="hint">
+                    升级中 {{ remainText(item.finishAt) }}
+                  </span>
+                  <span v-else-if="blockedText(item.blockedReason)" class="hint">{{
+                    blockedText(item.blockedReason)
+                  }}</span>
+                </div>
                 <button
                   type="button"
                   :disabled="busy || item.status === 'upgrading' || Boolean(item.blockedReason)"
-                  @click="submitFieldUpgrade(item.type)"
+                  @click="submitUpgrade(item.type)"
                 >
                   {{ item.level === 0 ? "建造" : "升级" }}
                 </button>
-              </div>
-            </li>
-          </ul>
-        </section>
+              </li>
+            </ul>
+          </section>
+
+          <section v-if="tab === 'city' && fields" class="block">
+            <h2>城外</h2>
+            <p class="res">
+              可收取：良田 {{ fields.fields.find((f) => f.type === "farm")?.pending ?? 0 }} 粮 / 木场
+              {{ fields.fields.find((f) => f.type === "lumber")?.pending ?? 0 }} 木 / 铁矿
+              {{ fields.fields.find((f) => f.type === "ironMine")?.pending ?? 0 }} 铁 / 铜矿
+              {{ fields.fields.find((f) => f.type === "copperMine")?.pending ?? 0 }} 铜
+            </p>
+            <p class="hint">主殿生效 1 级后可建；产出按上次收取时间现算，点收取才入库。</p>
+            <p>
+              <button type="button" :disabled="busy" @click="submitCollect()">一键收取</button>
+            </p>
+            <ul class="buildings">
+              <li v-for="item in fields.fields" :key="item.type">
+                <div>
+                  <strong>{{ item.name }}</strong>
+                  <span class="meta">{{ item.level }} / {{ item.maxLevel }} 级</span>
+                  <span class="meta">{{ item.pending }} / {{ item.fieldCap }} {{ resourceLabel[item.resource] }}</span>
+                  <span v-if="item.level >= 1" class="hint"> {{ item.ratePerHour }}/时 </span>
+                  <span v-if="item.status === 'upgrading'" class="hint">
+                    升级中 {{ remainText(item.finishAt) }}
+                  </span>
+                  <span v-else-if="blockedText(item.blockedReason)" class="hint">{{
+                    blockedText(item.blockedReason)
+                  }}</span>
+                </div>
+                <div class="actions">
+                  <button type="button" :disabled="busy || item.level < 1" @click="submitCollect(item.type)">
+                    收取
+                  </button>
+                  <button
+                    type="button"
+                    :disabled="busy || item.status === 'upgrading' || Boolean(item.blockedReason)"
+                    @click="submitFieldUpgrade(item.type)"
+                  >
+                    {{ item.level === 0 ? "建造" : "升级" }}
+                  </button>
+                </div>
+              </li>
+            </ul>
+          </section>
+
+          <section v-if="tab === 'city' && walls" class="block">
+            <h2>城墙</h2>
+            <p class="res">守城 {{ walls.wallDefense }} · 陷阱加成 {{ Math.round(walls.trapBonus * 100) }}%</p>
+            <p class="hint">主殿 2 级可建箭塔 / 城门，3 级可建陷阱。与城内、城外共用一条建造队列。</p>
+            <ul class="buildings">
+              <li v-for="item in walls.walls" :key="item.type">
+                <div>
+                  <strong>{{ item.name }}</strong>
+                  <span class="meta">{{ item.level }} / {{ item.maxLevel }} 级</span>
+                  <span v-if="item.status === 'upgrading'" class="hint">
+                    升级中 {{ remainText(item.finishAt) }}
+                  </span>
+                  <span v-else-if="blockedText(item.blockedReason)" class="hint">{{
+                    blockedText(item.blockedReason)
+                  }}</span>
+                </div>
+                <button
+                  type="button"
+                  :disabled="busy || item.status === 'upgrading' || Boolean(item.blockedReason)"
+                  @click="submitWallUpgrade(item.type)"
+                >
+                  {{ item.level === 0 ? "建造" : "升级" }}
+                </button>
+              </li>
+            </ul>
+          </section>
+
+          <section v-if="tab === 'army' && army" class="block">
+            <h2>军队</h2>
+            <p class="res">
+              步 {{ army.troops.infantry }} / 弓 {{ army.troops.archer }} / 骑 {{ army.troops.cavalry }} （上限
+              {{ army.troopCap }}，兵营 {{ army.barracksLevel }} 级，城防 {{ army.wallDefense }}）
+            </p>
+            <div class="form inline">
+              <label>
+                兵种
+                <select v-model="recruitType">
+                  <option value="infantry">步兵</option>
+                  <option value="archer">弓兵</option>
+                  <option value="cavalry">骑兵</option>
+                </select>
+              </label>
+              <label>
+                数量
+                <input v-model.number="recruitCount" type="number" min="1" max="100" />
+              </label>
+              <button type="button" :disabled="busy" @click="submitRecruit">征兵</button>
+            </div>
+            <p class="hint">步兵需兵营 1 级，弓兵 2 级，骑兵 3 级。征兵即时扣资源。</p>
+            <h3>出征</h3>
+            <p class="hint">{{ selected ? `目标：${selected.label}` : "在地图点选据点或其他玩家城" }}</p>
+            <div class="form inline">
+              <label>步 <input v-model.number="marchInf" type="number" min="0" /></label>
+              <label>弓 <input v-model.number="marchArc" type="number" min="0" /></label>
+              <label>骑 <input v-model.number="marchCav" type="number" min="0" /></label>
+              <button type="button" :disabled="busy || !selected" @click="submitMarch">出征</button>
+            </div>
+            <ul class="buildings">
+              <li v-for="item in army.marches" :key="item.id">
+                <div>
+                  <strong>行军 #{{ item.id }}</strong>
+                  <span class="meta">{{ item.fromX }},{{ item.fromY }} → {{ item.toX }},{{ item.toY }}</span>
+                  <span class="hint">到达 {{ remainText(item.arriveAt) }}</span>
+                </div>
+              </li>
+            </ul>
+          </section>
+
+          <section v-if="tab === 'map' && world" class="block">
+            <h2>大地图</h2>
+            <p class="hint">拖拽移动，滚轮缩放。金点自己，红点 AI，绿点玩家，方块为 NPC 据点。点击可选作出征目标。</p>
+            <WorldMap :world="world" @select="onSelectTarget" />
+          </section>
+
+          <section v-if="tab === 'reports'" class="block">
+            <h2>战报</h2>
+            <p v-if="!reports?.items.length" class="hint">暂无战报</p>
+            <ul class="buildings">
+              <li v-for="item in reports?.items ?? []" :key="item.id">
+                <div>
+                  <strong>{{ item.attackerWon ? "胜" : "负" }}</strong>
+                  <span class="meta">{{ item.summary }}</span>
+                  <p class="hint">
+                    攻 {{ troopLabel.infantry }}{{ item.attackerBefore.infantry }}→{{ item.attackerAfter.infantry }} /
+                    守 {{ item.defenderBefore.infantry }}→{{ item.defenderAfter.infantry }}
+                  </p>
+                </div>
+              </li>
+            </ul>
+          </section>
+        </template>
       </div>
     </section>
   </main>

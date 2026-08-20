@@ -8,6 +8,8 @@ public sealed class JwtOptions
 
     public string Audience { get; set; } = "SanguoGame.Web";
 
+    public const string DevelopmentSigningKey = "dev-only-change-me-use-a-32-byte-secret-key!";
+
     public string SigningKey { get; set; } = "";
 
     public int AccessTokenMinutes { get; set; } = 120;

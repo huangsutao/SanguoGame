@@ -13,6 +13,7 @@ public sealed class AiTickJob
     }
 
     [AutomaticRetry(Attempts = 0)]
+    [DisableConcurrentExecution(600)]
     public Task Execute() =>
         _ai.TickAsync(CancellationToken.None);
 }

@@ -34,4 +34,32 @@ public static class MapPlacement
 
         return false;
     }
+
+    public static async Task<(int X, int Y)?> TryPickEmptyCellAsync(
+        int width,
+        int height,
+        int maxAttempts,
+        Func<int, int, CancellationToken, Task<bool>> isOccupied,
+        CancellationToken cancellationToken,
+        Random? random = null)
+    {
+        if (width <= 0 || height <= 0 || maxAttempts <= 0)
+        {
+            return null;
+        }
+
+        random ??= Random.Shared;
+        for (var attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var x = random.Next(width);
+            var y = random.Next(height);
+            if (!await isOccupied(x, y, cancellationToken))
+            {
+                return (x, y);
+            }
+        }
+
+        return null;
+    }
 }

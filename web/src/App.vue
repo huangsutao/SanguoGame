@@ -33,7 +33,7 @@ import type {
   WallsOverviewDto,
   WorldDto
 } from "./api/types";
-import { clearTokens, getAccessToken, getRefreshToken, saveTokens } from "./session";
+import { clearTokens, getAccessToken, getRefreshToken, saveTokens, setUnauthorizedHandler } from "./session";
 import type { HubConnection } from "@microsoft/signalr";
 import WorldMap from "./WorldMap.vue";
 
@@ -50,6 +50,7 @@ const walls = ref<WallsOverviewDto | null>(null);
 const army = ref<ArmyOverviewDto | null>(null);
 const world = ref<WorldDto | null>(null);
 const reports = ref<PagedResult<BattleReportDto> | null>(null);
+const reportsPage = ref(1);
 const selected = ref<MarchTarget | null>(null);
 const nowMs = ref(Date.now());
 const recruitType = ref("infantry");
@@ -154,8 +155,26 @@ async function loadWorld(): Promise<void> {
   world.value = await fetchWorld();
 }
 
-async function loadReports(): Promise<void> {
-  reports.value = await fetchReports();
+async function loadReports(page = 1, append = false): Promise<void> {
+  const data = await fetchReports(page);
+  reports.value = append && reports.value
+    ? { ...data, items: [...reports.value.items, ...data.items] }
+    : data;
+  reportsPage.value = page;
+}
+
+async function loadMoreReports(): Promise<void> {
+  if (busy.value || !reports.value || reports.value.items.length >= reports.value.total) {
+    return;
+  }
+  busy.value = true;
+  try {
+    await loadReports(reportsPage.value + 1, true);
+  } catch (err) {
+    fail(err);
+  } finally {
+    busy.value = false;
+  }
 }
 
 async function loadAll(): Promise<void> {
@@ -175,6 +194,9 @@ async function connectHub(): Promise<void> {
     void loadAll();
     notice.value = "本城遭到攻击";
   });
+  hub.onreconnected(() => {
+    void loadAll();
+  });
   await hub.start();
 }
 
@@ -189,6 +211,17 @@ async function disconnectHub(): Promise<void> {
 }
 
 onMounted(async () => {
+  setUnauthorizedHandler(() => {
+    session.value = null;
+    overview.value = null;
+    fields.value = null;
+    walls.value = null;
+    army.value = null;
+    world.value = null;
+    reports.value = null;
+    void disconnectHub();
+  });
+
   tick = window.setInterval(() => {
     nowMs.value = Date.now();
   }, 1000);
@@ -209,6 +242,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  setUnauthorizedHandler(null);
   if (tick !== undefined) {
     window.clearInterval(tick);
   }
@@ -243,7 +277,7 @@ async function submitAuth(): Promise<void> {
       mode.value === "register"
         ? await register(username.value.trim(), password.value)
         : await login(username.value.trim(), password.value);
-    saveTokens(tokens.accessToken, tokens.refreshToken);
+    saveTokens(tokens.accessToken, tokens.refreshToken, tokens.expiresAt);
     session.value = await fetchSession();
     password.value = "";
   } catch (err) {
@@ -361,6 +395,10 @@ async function submitCollect(type?: string): Promise<void> {
 async function submitRecruit(): Promise<void> {
   error.value = "";
   notice.value = "";
+  if (!Number.isFinite(recruitCount.value) || recruitCount.value < 1 || recruitCount.value > 100) {
+    error.value = "征兵数量为 1～100";
+    return;
+  }
   busy.value = true;
   try {
     army.value = await recruit(recruitType.value, recruitCount.value);
@@ -377,6 +415,13 @@ async function submitMarch(): Promise<void> {
     error.value = "请先在地图上点选目标";
     return;
   }
+  const infantry = Number.isFinite(marchInf.value) ? Math.max(0, marchInf.value) : 0;
+  const archer = Number.isFinite(marchArc.value) ? Math.max(0, marchArc.value) : 0;
+  const cavalry = Number.isFinite(marchCav.value) ? Math.max(0, marchCav.value) : 0;
+  if (infantry + archer + cavalry <= 0) {
+    error.value = "出征至少需要 1 名士兵";
+    return;
+  }
   error.value = "";
   notice.value = "";
   busy.value = true;
@@ -384,9 +429,9 @@ async function submitMarch(): Promise<void> {
     army.value = await march(
       selected.value.targetType,
       selected.value.targetId,
-      marchInf.value,
-      marchArc.value,
-      marchCav.value
+      infantry,
+      archer,
+      cavalry
     );
     await Promise.all([loadWorld(), loadReports(), loadCity()]);
     notice.value = "已出征";
@@ -664,6 +709,14 @@ async function submitLogout(): Promise<void> {
                 </div>
               </li>
             </ul>
+            <button
+              v-if="reports && reports.items.length < reports.total"
+              type="button"
+              :disabled="busy"
+              @click="loadMoreReports"
+            >
+              加载更多
+            </button>
           </section>
         </template>
       </div>

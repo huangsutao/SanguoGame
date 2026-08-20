@@ -16,21 +16,32 @@ public sealed class GameBootHostedService : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await Task.Delay(TimeSpan.FromSeconds(3), stoppingToken);
-        try
+        const int attempts = 3;
+        for (var round = 1; round <= attempts; round++)
         {
-            await using var scope = _scopes.CreateAsyncScope();
-            var buildings = scope.ServiceProvider.GetRequiredService<BuildingService>();
-            var marches = scope.ServiceProvider.GetRequiredService<MarchService>();
-            var seed = scope.ServiceProvider.GetRequiredService<SeedService>();
-            var world = scope.ServiceProvider.GetRequiredService<WorldService>();
-            await buildings.RecoverDueAsync(stoppingToken);
-            await marches.RecoverDueAsync(stoppingToken);
-            await world.RecoverDueOutpostsAsync(stoppingToken);
-            await seed.EnsureWorldAsync(stoppingToken);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "启动补结算或世界种子失败");
+            try
+            {
+                await using var scope = _scopes.CreateAsyncScope();
+                var buildings = scope.ServiceProvider.GetRequiredService<BuildingService>();
+                var marches = scope.ServiceProvider.GetRequiredService<MarchService>();
+                var seed = scope.ServiceProvider.GetRequiredService<SeedService>();
+                var world = scope.ServiceProvider.GetRequiredService<WorldService>();
+                await buildings.RecoverDueAsync(stoppingToken);
+                await marches.RecoverDueAsync(stoppingToken);
+                await world.RecoverDueOutpostsAsync(stoppingToken);
+                await seed.EnsureWorldAsync(stoppingToken);
+                return;
+            }
+            catch (Exception ex) when (round < attempts && !stoppingToken.IsCancellationRequested)
+            {
+                _logger.LogError(ex, "启动补结算或世界种子失败，将重试 ({Round}/{Attempts})", round, attempts);
+                await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "启动补结算或世界种子失败");
+                return;
+            }
         }
     }
 }

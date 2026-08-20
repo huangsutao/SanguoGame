@@ -18,7 +18,10 @@ namespace SanguoGame.Server.Security;
 
 internal static class AuthenticationExtensions
 {
-    public static IServiceCollection AddGameAuth(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddGameAuth(
+        this IServiceCollection services,
+        IConfiguration configuration,
+        IHostEnvironment environment)
     {
         services.AddOptions<JwtOptions>()
             .Bind(configuration.GetSection(JwtOptions.SectionName))
@@ -40,7 +43,7 @@ internal static class AuthenticationExtensions
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {
-                options.RequireHttpsMetadata = false;
+                options.RequireHttpsMetadata = !environment.IsDevelopment();
                 options.MapInboundClaims = false;
                 options.TokenValidationParameters = new TokenValidationParameters
                 {

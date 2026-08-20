@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from "vue";
+import { onMounted, onUnmounted, ref } from "vue";
 import type { WorldDto } from "./api/types";
 
 const props = defineProps<{ world: WorldDto }>();
@@ -16,6 +16,7 @@ let lastX = 0;
 let lastY = 0;
 let startX = 0;
 let startY = 0;
+let raf = 0;
 
 function draw(): void {
   const el = canvas.value;
@@ -167,18 +168,16 @@ function onWheel(ev: WheelEvent): void {
 }
 
 onMounted(() => {
-  draw();
+  raf = requestAnimationFrame(loop);
 });
 
-watch(
-  () => props.world,
-  () => {
-    draw();
-  },
-  { deep: true }
-);
+function loop(): void {
+  draw();
+  raf = requestAnimationFrame(loop);
+}
 
 onUnmounted(() => {
+  cancelAnimationFrame(raf);
   dragging = false;
 });
 </script>

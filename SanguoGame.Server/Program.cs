@@ -1,13 +1,19 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
+using SanguoGame.Core;
 using SanguoGame.Infrastructure;
+using SanguoGame.Server.Contracts;
 using SanguoGame.Server.Filters;
 using SanguoGame.Server.Hubs;
 using SanguoGame.Server.Jobs;
 using SanguoGame.Server.Json;
+using SanguoGame.Server.Options;
 using SanguoGame.Server.Security;
 namespace SanguoGame.Server;
 
@@ -22,7 +28,7 @@ public class Program
         var builder = WebApplication.CreateBuilder(args);
 
         builder.Services.AddInfrastructure(builder.Configuration);
-        builder.Services.AddGameAuth(builder.Configuration);
+        builder.Services.AddGameAuth(builder.Configuration, builder.Environment);
         builder.Services.AddHangfire(config => config
             .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
             .UseSimpleAssemblyNameTypeSerializer()
@@ -45,11 +51,41 @@ public class Program
                 options.PayloadSerializerOptions.Converters.Add(new UtcDateTimeJsonConverter());
             });
         builder.Services.AddOpenApi();
+        builder.Services.AddRateLimiter(options =>
+        {
+            options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            options.AddPolicy("auth", httpContext =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 20,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0,
+                        AutoReplenishment = true
+                    }));
+            options.OnRejected = async (context, cancellationToken) =>
+            {
+                var http = context.HttpContext;
+                if (http.Response.HasStarted)
+                {
+                    return;
+                }
 
+                http.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+                var envelope = ApiResult.Fail(ErrorCodes.TooManyRequests, "请求过于频繁");
+                envelope.TraceId = ApiTrace.GetTraceId(http);
+                var jsonOptions = http.RequestServices.GetRequiredService<IOptions<JsonOptions>>().Value.JsonSerializerOptions;
+                await http.Response.WriteAsJsonAsync(envelope, jsonOptions, cancellationToken);
+            };
+        });
+
+        var origins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>()
+            ?? ["http://localhost:5173"];
         builder.Services.AddCors(options =>
         {
             options.AddPolicy("web", policy =>
-                policy.WithOrigins("http://localhost:5173")
+                policy.WithOrigins(origins)
                     .AllowAnyHeader()
                     .AllowAnyMethod()
                     .AllowCredentials());
@@ -76,6 +112,7 @@ public class Program
         });
 
         var app = builder.Build();
+        EnsureProductionSecrets(app);
 
         if (app.Environment.IsDevelopment())
         {
@@ -86,6 +123,7 @@ public class Program
             app.UseHttpsRedirection();
         }
         app.UseCors("web");
+        app.UseRateLimiter();
         app.UseAuthentication();
         app.UseAuthorization();
 
@@ -99,5 +137,25 @@ public class Program
             $"*/{aiTickMinutes} * * * *");
 
         app.Run();
+    }
+
+    private static void EnsureProductionSecrets(WebApplication app)
+    {
+        if (app.Environment.IsDevelopment())
+        {
+            return;
+        }
+
+        if (app.Configuration.GetValue("FreeSql:AutoSyncStructure", false))
+        {
+            throw new InvalidOperationException("生产环境禁止 FreeSql:AutoSyncStructure");
+        }
+
+        var signingKey = app.Configuration["Jwt:SigningKey"];
+        if (string.IsNullOrWhiteSpace(signingKey) ||
+            string.Equals(signingKey, JwtOptions.DevelopmentSigningKey, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("生产环境必须通过环境变量配置独立的 Jwt:SigningKey");
+        }
     }
 }

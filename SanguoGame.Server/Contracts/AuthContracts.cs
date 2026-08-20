@@ -19,9 +19,11 @@ public sealed class RegisterRequest
 public sealed class LoginRequest
 {
     [Required]
+    [MinLength(1)]
     public string Username { get; set; } = "";
 
     [Required]
+    [MinLength(1)]
     public string Password { get; set; } = "";
 }
 

@@ -159,7 +159,7 @@ export interface MarchDto {
   fromY: number;
   toX: number;
   toY: number;
-  troops: TroopDto;
+  troops?: TroopDto;
   departAt: string;
   arriveAt: string;
   status: "marching" | "settled";

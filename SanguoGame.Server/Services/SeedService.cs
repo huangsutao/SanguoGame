@@ -9,6 +9,8 @@ namespace SanguoGame.Server.Services;
 
 public sealed class SeedService
 {
+    private const long WorldSeedLockId = 87342016;
+
     private readonly IFreeSql _orm;
     private readonly WorldMapOptions _map;
     private readonly CityService _cities;
@@ -31,25 +33,36 @@ public sealed class SeedService
 
     public async Task EnsureWorldAsync(CancellationToken cancellationToken)
     {
-        await EnsureOutpostsAsync(cancellationToken);
-        await EnsureAiAsync(cancellationToken);
+        await _orm.Ado.ExecuteNonQueryAsync("SELECT pg_advisory_lock(" + WorldSeedLockId + ")");
+        try
+        {
+            await EnsureOutpostsAsync(cancellationToken);
+            await EnsureAiAsync(cancellationToken);
+        }
+        finally
+        {
+            await _orm.Ado.ExecuteNonQueryAsync("SELECT pg_advisory_unlock(" + WorldSeedLockId + ")");
+        }
     }
 
     private async Task EnsureOutpostsAsync(CancellationToken cancellationToken)
     {
         var existing = (int)await _orm.Select<OutpostEntity>().CountAsync(cancellationToken);
-        for (var i = existing; i < _map.OutpostCount; i++)
+        var attempts = 0;
+        var maxAttempts = Math.Max(_map.OutpostCount * 4, 8);
+        while (existing < _map.OutpostCount && attempts < maxAttempts)
         {
-            var def = OutpostCatalog.All[i % OutpostCatalog.All.Count];
-            if (!MapPlacement.TryPickEmptyCell(
-                    _map.Width,
-                    _map.Height,
-                    _map.PlacementMaxAttempts,
-                    (x, y) => WorldOccupancy.IsOccupied(_orm, x, y),
-                    out var x,
-                    out var y))
+            attempts++;
+            var def = OutpostCatalog.All[existing % OutpostCatalog.All.Count];
+            var cell = await MapPlacement.TryPickEmptyCellAsync(
+                _map.Width,
+                _map.Height,
+                _map.PlacementMaxAttempts,
+                (x, y, ct) => WorldOccupancy.IsOccupiedAsync(_orm, x, y, ct),
+                cancellationToken);
+            if (cell is null)
             {
-                _logger.LogWarning("据点空地不足，已生成 {Count} 座", i);
+                _logger.LogWarning("据点空地不足，已生成 {Count} 座", existing);
                 break;
             }
 
@@ -58,15 +71,15 @@ public sealed class SeedService
                 await _orm.Insert(new OutpostEntity
                 {
                     Type = def.Type,
-                    Name = $"{def.Name}·{x},{y}",
-                    X = x,
-                    Y = y,
+                    Name = $"{def.Name}·{cell.Value.X},{cell.Value.Y}",
+                    X = cell.Value.X,
+                    Y = cell.Value.Y,
                     Garrison = def.Garrison
                 }).ExecuteAffrowsAsync(cancellationToken);
+                existing++;
             }
             catch (Exception ex) when (DbErrors.IsUniqueViolation(ex))
             {
-                i--;
             }
         }
     }
@@ -74,9 +87,8 @@ public sealed class SeedService
     private async Task EnsureAiAsync(CancellationToken cancellationToken)
     {
         var existing = (int)await _orm.Select<AccountEntity>().Where(a => a.IsAi).CountAsync(cancellationToken);
-        for (var i = existing; i < _map.AiCityCount; i++)
+        for (var n = 1; existing < _map.AiCityCount && n <= _map.AiCityCount + 32; n++)
         {
-            var n = i + 1;
             var username = $"ai_{n:000}";
             if (await _orm.Select<AccountEntity>().AnyAsync(a => a.UsernameNormalized == username, cancellationToken))
             {
@@ -132,6 +144,7 @@ public sealed class SeedService
             try
             {
                 await _cities.FoundAsync(account.Id, cancellationToken);
+                existing++;
             }
             catch (Exception ex)
             {

@@ -34,13 +34,13 @@ public sealed class CityService
 
         for (var round = 0; round < InsertRetries; round++)
         {
-            if (!MapPlacement.TryPickEmptyCell(
-                    _map.Width,
-                    _map.Height,
-                    _map.PlacementMaxAttempts,
-                    IsOccupied,
-                    out var x,
-                    out var y))
+            var cell = await MapPlacement.TryPickEmptyCellAsync(
+                _map.Width,
+                _map.Height,
+                _map.PlacementMaxAttempts,
+                (x, y, ct) => WorldOccupancy.IsOccupiedAsync(_orm, x, y, ct),
+                cancellationToken);
+            if (cell is null)
             {
                 throw new BizException(ErrorCodes.MapFull, "暂无空地可建城");
             }
@@ -49,8 +49,8 @@ public sealed class CityService
             {
                 CharacterId = character.Id,
                 Name = $"{character.Name}的城",
-                X = x,
-                Y = y,
+                X = cell.Value.X,
+                Y = cell.Value.Y,
                 Grain = InnerBuildingCatalog.StartingResource,
                 Wood = InnerBuildingCatalog.StartingResource,
                 Iron = InnerBuildingCatalog.StartingResource,
@@ -101,9 +101,6 @@ public sealed class CityService
 
         return character;
     }
-
-    private bool IsOccupied(int x, int y) =>
-        WorldOccupancy.IsOccupied(_orm, x, y);
 
     private static CityResponse ToResponse(CityEntity city) =>
         new(city.Id, city.CharacterId, city.Name, city.X, city.Y, city.CreatedAt, EmptyZones);

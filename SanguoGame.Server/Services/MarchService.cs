@@ -114,7 +114,7 @@ public sealed class MarchService
         {
             _jobs.Schedule<CompleteMarchJob>(
                 job => job.Execute(stored.Id),
-                new DateTimeOffset(DateTime.SpecifyKind(stored.ArriveAt, DateTimeKind.Utc)));
+                UtcSchedule.At(stored.ArriveAt));
         }
 
         return await _army.BuildOverviewAsync(city, cancellationToken);
@@ -125,6 +125,12 @@ public sealed class MarchService
         var march = await _orm.Select<MarchEntity>().Where(m => m.Id == marchId).FirstAsync(cancellationToken);
         if (march is null || march.Status != MarchStatus.Marching)
         {
+            return;
+        }
+
+        if (march.ArriveAt > DateTime.UtcNow.AddSeconds(2))
+        {
+            _jobs.Schedule<CompleteMarchJob>(job => job.Execute(marchId), UtcSchedule.At(march.ArriveAt));
             return;
         }
 
@@ -254,9 +260,11 @@ public sealed class MarchService
             }
 
             var now = DateTime.UtcNow;
+            var atkBuildings = await LoadBuildingsAsync(transaction, attacker.Id, ct);
+            var atkBarracks = atkBuildings.FirstOrDefault(b => b.Type == "barracks")?.Level ?? 0;
             if (CityStats.IsProtected(defender, now))
             {
-                ReturnTroops(attacker, new TroopCount(current.Infantry, current.Archer, current.Cavalry), int.MaxValue);
+                ReturnTroops(attacker, new TroopCount(current.Infantry, current.Archer, current.Cavalry), InnerBuildingCatalog.TroopCap(atkBarracks));
                 await SaveCityAsync(transaction, attacker, ct);
                 var skipped = new BattleOutcome(
                     false,
@@ -268,11 +276,9 @@ public sealed class MarchService
                 return await PersistAsync(transaction, current, skipped, ResourceAmount.Zero, "目标已进入保护", ct);
             }
 
-            var atkBuildings = await LoadBuildingsAsync(transaction, attacker.Id, ct);
             var defBuildings = await LoadBuildingsAsync(transaction, defender.Id, ct);
             var academy = atkBuildings.FirstOrDefault(b => b.Type == "academy")?.Level ?? 0;
             var atkWarehouse = atkBuildings.FirstOrDefault(b => b.Type == "warehouse")?.Level ?? 0;
-            var atkBarracks = atkBuildings.FirstOrDefault(b => b.Type == "barracks")?.Level ?? 0;
             var defBarracks = defBuildings.FirstOrDefault(b => b.Type == "barracks")?.Level ?? 0;
             var defLevels = WallCatalog.All.ToDictionary(
                 w => w.Type,
@@ -388,8 +394,8 @@ public sealed class MarchService
         int attackerCap,
         DateTime now)
     {
-        var desired = ResourceAmount.Zero;
         var byType = buildings.ToDictionary(b => b.Type, StringComparer.OrdinalIgnoreCase);
+        var fields = new List<FieldLootInput>();
         foreach (var def in OuterFieldCatalog.All)
         {
             if (!byType.TryGetValue(def.Type, out var entity) || entity.Level < 1 || entity.LastCollectedAt is null)
@@ -397,35 +403,29 @@ public sealed class MarchService
                 continue;
             }
 
-            var pending = FieldProduction.Pending(
-                def.RatePerHour(entity.Level),
-                def.FieldCap(entity.Level),
-                entity.LastCollectedAt,
-                now);
-            var take = (int)Math.Floor(pending * 0.5);
-            desired = desired.Add(def.Resource, take);
-            var leftover = pending - take;
-            entity.LastCollectedAt = FieldProduction.AfterCollect(now, leftover, def.RatePerHour(entity.Level));
+            fields.Add(new FieldLootInput(def.Type, entity.Level, entity.LastCollectedAt));
+        }
+
+        var result = PvpLoot.Compute(
+            CityStats.Stock(defender),
+            CityStats.Stock(attacker),
+            attackerCap,
+            fields,
+            now);
+        CityStats.ApplyStock(attacker, result.AttackerStockAfter);
+        CityStats.ApplyStock(defender, result.DefenderStockAfter);
+        foreach (var update in result.FieldUpdates)
+        {
+            if (!byType.TryGetValue(update.Type, out var entity))
+            {
+                continue;
+            }
+
+            entity.LastCollectedAt = update.LastCollectedAt;
             entity.UpdatedAt = now;
         }
 
-        var store = CityStats.Stock(defender);
-        var fromStore = new ResourceAmount(
-            Math.Min((int)Math.Floor(store.Grain * 0.3), 2000),
-            Math.Min((int)Math.Floor(store.Wood * 0.3), 2000),
-            Math.Min((int)Math.Floor(store.Iron * 0.3), 2000),
-            Math.Min((int)Math.Floor(store.Copper * 0.3), 2000));
-        desired = desired.Add(fromStore);
-
-        var space = new ResourceAmount(
-            Math.Max(0, attackerCap - attacker.Grain),
-            Math.Max(0, attackerCap - attacker.Wood),
-            Math.Max(0, attackerCap - attacker.Iron),
-            Math.Max(0, attackerCap - attacker.Copper));
-        var actual = desired.Min(space);
-        CityStats.ApplyStock(attacker, CityStats.Stock(attacker).Add(actual).WithCap(attackerCap));
-        CityStats.ApplyStock(defender, store.Subtract(actual.Min(fromStore)));
-        return actual;
+        return result.Actual;
     }
 
     private static ResourceAmount Deposit(CityEntity city, ResourceAmount loot, int cap)
@@ -451,7 +451,9 @@ public sealed class MarchService
         CancellationToken cancellationToken)
     {
         var troops = new TroopCount(march.Infantry, march.Archer, march.Cavalry);
-        ReturnTroops(attacker, troops, int.MaxValue);
+        var buildings = await LoadBuildingsAsync(transaction, attacker.Id, cancellationToken);
+        var barracks = buildings.FirstOrDefault(b => b.Type == "barracks")?.Level ?? 0;
+        ReturnTroops(attacker, troops, InnerBuildingCatalog.TroopCap(barracks));
         await SaveCityAsync(transaction, attacker, cancellationToken);
         var outcome = new BattleOutcome(false, troops, troops, TroopCount.Zero, TroopCount.Zero, SeedOf(march.Id));
         return await PersistAsync(transaction, march, outcome, ResourceAmount.Zero, summary, cancellationToken);

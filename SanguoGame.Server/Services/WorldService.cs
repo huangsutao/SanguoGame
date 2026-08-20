@@ -37,20 +37,20 @@ public sealed class WorldService
             }
         }
 
-        await RecoverDueOutpostsAsync(cancellationToken);
-
         var now = DateTime.UtcNow;
         var cityRows = await _orm.Select<CityEntity>().ToListAsync(cancellationToken);
-        var characters = (await _orm.Select<CharacterEntity>().ToListAsync(cancellationToken))
-            .ToDictionary(c => c.Id);
-        var accounts = (await _orm.Select<AccountEntity>().ToListAsync(cancellationToken))
-            .ToDictionary(a => a.Id);
+        var characterOwners = (await _orm.Select<CharacterEntity>().ToListAsync(cancellationToken))
+            .ToDictionary(c => c.Id, c => c.AccountId);
+        var aiAccountIds = (await _orm.Select<AccountEntity>()
+                .Where(a => a.IsAi)
+                .ToListAsync(cancellationToken))
+            .Select(a => a.Id)
+            .ToHashSet();
 
         var cityDtos = cityRows.Select(city =>
         {
-            var isAi = characters.TryGetValue(city.CharacterId, out var ch)
-                && accounts.TryGetValue(ch.AccountId, out var acc)
-                && acc.IsAi;
+            var isAi = characterOwners.TryGetValue(city.CharacterId, out var accountId)
+                && aiAccountIds.Contains(accountId);
             var owner = myCityId == city.Id ? "self" : isAi ? "ai" : "player";
             return new WorldCityDto(
                 city.Id,
@@ -63,13 +63,24 @@ public sealed class WorldService
 
         var outposts = await _orm.Select<OutpostEntity>().ToListAsync(cancellationToken);
         var outpostDtos = outposts.Select(o =>
-            new WorldOutpostDto(o.Id, o.Type, o.Name, o.X, o.Y, o.Garrison)).ToList();
+        {
+            var garrison = o.Garrison;
+            if (o.RecoverAt is { } until && until <= now)
+            {
+                garrison = OutpostCatalog.Require(o.Type).Garrison;
+            }
+
+            return new WorldOutpostDto(o.Id, o.Type, o.Name, o.X, o.Y, garrison);
+        }).ToList();
 
         var marches = await _orm.Select<MarchEntity>()
             .Where(m => m.Status == MarchStatus.Marching)
             .ToListAsync(cancellationToken);
         var marchDtos = marches.Select(m =>
-            ArmyService.MapMarch(m, myCityId is long id && m.FromCityId == id)).ToList();
+        {
+            var mine = myCityId is long id && m.FromCityId == id;
+            return ArmyService.MapMarch(m, mine, includeTroops: mine);
+        }).ToList();
 
         return new WorldDto(_map.Width, _map.Height, now, origin, cityDtos, outpostDtos, marchDtos);
     }
@@ -77,18 +88,33 @@ public sealed class WorldService
     public async Task RecoverDueOutpostsAsync(CancellationToken cancellationToken)
     {
         var now = DateTime.UtcNow;
-        var due = await _orm.Select<OutpostEntity>()
-            .Where(o => o.RecoverAt != null && o.RecoverAt <= now)
-            .ToListAsync(cancellationToken);
-        foreach (var outpost in due)
+        using var conn = await _orm.Ado.MasterPool.GetAsync();
+        await using var transaction = await conn.Value.BeginTransactionAsync(cancellationToken);
+        try
         {
-            var def = OutpostCatalog.Require(outpost.Type);
-            outpost.Garrison = def.Garrison;
-            outpost.RecoverAt = null;
-            await _orm.Update<OutpostEntity>()
-                .SetSource(outpost)
-                .UpdateColumns(o => new { o.Garrison, o.RecoverAt })
-                .ExecuteAffrowsAsync(cancellationToken);
+            var due = await _orm.Select<OutpostEntity>()
+                .WithTransaction(transaction)
+                .ForUpdate()
+                .Where(o => o.RecoverAt != null && o.RecoverAt <= now)
+                .ToListAsync(cancellationToken);
+            foreach (var outpost in due)
+            {
+                var def = OutpostCatalog.Require(outpost.Type);
+                outpost.Garrison = def.Garrison;
+                outpost.RecoverAt = null;
+                await _orm.Update<OutpostEntity>()
+                    .WithTransaction(transaction)
+                    .SetSource(outpost)
+                    .UpdateColumns(o => new { o.Garrison, o.RecoverAt })
+                    .ExecuteAffrowsAsync(cancellationToken);
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
         }
     }
 }

@@ -48,4 +48,7 @@ public sealed class MarchEntity
 
     [Column(Name = "status", IsNullable = false)]
     public MarchStatus Status { get; set; }
+
+    [Column(Name = "kind", IsNullable = false)]
+    public MarchKind Kind { get; set; }
 }

@@ -3,6 +3,7 @@ using Hangfire;
 using Microsoft.AspNetCore.SignalR;
 using SanguoGame.Core;
 using SanguoGame.Core.Buildings;
+using SanguoGame.Core.Daily;
 using SanguoGame.Infrastructure;
 using SanguoGame.Infrastructure.Entities;
 using SanguoGame.Server.Contracts;
@@ -16,12 +17,14 @@ public sealed class BuildingService
     private readonly IFreeSql _orm;
     private readonly IBackgroundJobClient _jobs;
     private readonly IHubContext<GameHub> _hub;
+    private readonly DailyService _daily;
 
-    public BuildingService(IFreeSql orm, IBackgroundJobClient jobs, IHubContext<GameHub> hub)
+    public BuildingService(IFreeSql orm, IBackgroundJobClient jobs, IHubContext<GameHub> hub, DailyService daily)
     {
         _orm = orm;
         _jobs = jobs;
         _hub = hub;
+        _daily = daily;
     }
 
     public async Task<BuildingsOverviewDto> GetOverviewAsync(long accountId, CancellationToken cancellationToken) =>
@@ -149,6 +152,7 @@ public sealed class BuildingService
         _jobs.Schedule<CompleteInnerBuildingJob>(
             job => job.Execute(city.Id, buildingType, targetLevel),
             UtcSchedule.At(finishAt));
+        await _daily.AddProgressAsync(city.Id, DailyCatalog.Upgrade, 1, cancellationToken);
     }
 
     public async Task CompleteAsync(long cityId, string buildingType, int targetLevel, CancellationToken cancellationToken)

@@ -171,6 +171,7 @@ export interface MarchDto {
   arriveAt: string;
   status: "marching" | "settled";
   mine: boolean;
+  kind?: "attack" | "scout";
 }
 
 export interface ArmyOverviewDto {
@@ -309,7 +310,25 @@ export interface MarchTarget {
   label: string;
 }
 
-export type MailType = "system" | "battle" | "alliance";
+export type MailType = "system" | "battle" | "alliance" | "scout";
+
+export interface DailyMissionDto {
+  type: string;
+  name: string;
+  detail: string;
+  progress: number;
+  required: number;
+  claimed: boolean;
+  reward: ResourceDto;
+}
+
+export interface DailyOverviewDto {
+  serverTime: string;
+  day: string;
+  resources: ResourceDto;
+  resourceCap: number;
+  missions: DailyMissionDto[];
+}
 
 export interface MailDto {
   id: number;

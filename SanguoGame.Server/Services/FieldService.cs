@@ -2,6 +2,7 @@ using System.Data.Common;
 using FreeSql;
 using SanguoGame.Core;
 using SanguoGame.Core.Buildings;
+using SanguoGame.Core.Daily;
 using SanguoGame.Infrastructure.Entities;
 using SanguoGame.Server.Contracts;
 
@@ -11,11 +12,13 @@ public sealed class FieldService
 {
     private readonly IFreeSql _orm;
     private readonly BuildingService _buildings;
+    private readonly DailyService _daily;
 
-    public FieldService(IFreeSql orm, BuildingService buildings)
+    public FieldService(IFreeSql orm, BuildingService buildings, DailyService daily)
     {
         _orm = orm;
         _buildings = buildings;
+        _daily = daily;
     }
 
     public async Task<FieldsOverviewDto> GetOverviewAsync(long accountId, CancellationToken cancellationToken)
@@ -120,6 +123,11 @@ public sealed class FieldService
             city.Copper = lockedCity.Copper;
             return (gained, warehouseFull);
         }, cancellationToken);
+
+        if (gained.Total > 0)
+        {
+            await _daily.AddProgressAsync(city.Id, DailyCatalog.Collect, 1, cancellationToken);
+        }
 
         var overview = await BuildOverviewAsync(city, now, cancellationToken);
         var data = new FieldsCollectDto(

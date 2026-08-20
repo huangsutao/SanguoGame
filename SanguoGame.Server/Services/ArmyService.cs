@@ -2,6 +2,7 @@ using FreeSql;
 using SanguoGame.Core;
 using SanguoGame.Core.Army;
 using SanguoGame.Core.Buildings;
+using SanguoGame.Core.Daily;
 using SanguoGame.Infrastructure.Entities;
 using SanguoGame.Server.Contracts;
 
@@ -10,10 +11,12 @@ namespace SanguoGame.Server.Services;
 public sealed class ArmyService
 {
     private readonly IFreeSql _orm;
+    private readonly DailyService _daily;
 
-    public ArmyService(IFreeSql orm)
+    public ArmyService(IFreeSql orm, DailyService daily)
     {
         _orm = orm;
+        _daily = daily;
     }
 
     public async Task<ArmyOverviewDto> GetOverviewAsync(long accountId, CancellationToken cancellationToken)
@@ -80,6 +83,7 @@ public sealed class ArmyService
             return 0;
         }, cancellationToken);
 
+        await _daily.AddProgressAsync(city.Id, DailyCatalog.Recruit, count, cancellationToken);
         return await BuildOverviewAsync(city, cancellationToken);
     }
 
@@ -136,7 +140,8 @@ public sealed class ArmyService
             march.DepartAt,
             march.ArriveAt,
             march.Status,
-            mine);
+            mine,
+            march.Kind);
 
     internal async Task<CityEntity> RequireCityAsync(long accountId, CancellationToken cancellationToken)
     {

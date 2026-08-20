@@ -1,5 +1,6 @@
 using SanguoGame.Core.Army;
 using SanguoGame.Core.Buildings;
+using SanguoGame.Core.Daily;
 using SanguoGame.Core.Market;
 using SanguoGame.Core.World;
 using Xunit;
@@ -265,5 +266,30 @@ public class TechBonusesTests
         Assert.Equal(8, WallCatalog.WallDefense(levels));
         Assert.Equal(10, WallCatalog.WallDefense(levels, 1));
         Assert.Equal(0.03, WallCatalog.TrapBonus(1, 1), 3);
+    }
+}
+
+public class DailyScoutRulesTests
+{
+    [Fact]
+    public void DayKey_UsesUtcDate()
+    {
+        var now = new DateTime(2026, 8, 20, 23, 30, 0, DateTimeKind.Utc);
+        Assert.Equal(new DateTime(2026, 8, 20, 0, 0, 0, DateTimeKind.Utc), DailyCatalog.DayKey(now));
+    }
+
+    [Fact]
+    public void Catalog_HasSixMissions_AndBundleNeedsFive()
+    {
+        Assert.Equal(6, DailyCatalog.All.Count);
+        Assert.Equal(5, DailyCatalog.Require(DailyCatalog.Bundle).Required);
+        Assert.All(DailyCatalog.All.Where(d => d.Type != DailyCatalog.Bundle), d => Assert.True(d.Required >= 1));
+    }
+
+    [Fact]
+    public void Scout_IsHalfMarchRoundedUpMin()
+    {
+        Assert.Equal(15, MarchTiming.ScoutDurationSeconds(0, 0, 3, 0, 10, 30));
+        Assert.Equal(5, MarchTiming.ScoutDurationSeconds(0, 0, 0, 1, 5, 10));
     }
 }

@@ -4,7 +4,8 @@ public enum MailType
 {
     System,
     Battle,
-    Alliance
+    Alliance,
+    Scout
 }
 
 public enum AllianceRole

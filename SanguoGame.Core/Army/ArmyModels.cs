@@ -89,6 +89,12 @@ public enum MarchStatus
     Settled = 1
 }
 
+public enum MarchKind
+{
+    Attack = 0,
+    Scout = 1
+}
+
 public sealed record BattleInput(
     TroopCount Attacker,
     TroopCount Defender,
@@ -151,5 +157,12 @@ public static class MarchTiming
     {
         var distance = Math.Abs(fromX - toX) + Math.Abs(fromY - toY);
         return Math.Max(minSeconds, distance * secondsPerTile);
+    }
+
+    public static int ScoutDurationSeconds(int fromX, int fromY, int toX, int toY, int secondsPerTile, int minSeconds)
+    {
+        var distance = Math.Abs(fromX - toX) + Math.Abs(fromY - toY);
+        var halfMin = (minSeconds + 1) / 2;
+        return Math.Max(halfMin, distance * secondsPerTile / 2);
     }
 }

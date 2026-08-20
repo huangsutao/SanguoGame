@@ -175,7 +175,7 @@ Job：`CompleteMarch(marchId)`，在 `arriveAt` 触发。已结算则直接成�
 |----|------|
 | `sg_city` | 增加 `infantry` / `archer` / `cavalry`（默认 0）；`protection_until` 第 6 步用 |
 | `sg_outpost` | NPC 据点，见 [大地图](design-world-map.md) |
-| `sg_march` | 行军：出发城、目标类型与 Id、三种兵、出发/到达时间、`status` |
+| `sg_march` | 行军：出发城、目标类型与 Id、三种兵、出发/到达时间、`status`、`kind`（进攻 / 斥候，见第 12 步） |
 | `sg_battle_report` | 战报；`march_id` 唯一 |
 
 `status`：`marching` / `settled`。

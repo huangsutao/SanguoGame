@@ -42,7 +42,8 @@ public static class DependencyInjection
                     typeof(AllianceEntity),
                     typeof(AllianceMemberEntity),
                     typeof(AllianceInviteEntity),
-                    typeof(AllianceApplicationEntity));
+                    typeof(AllianceApplicationEntity),
+                    typeof(DailyQuestEntity));
 
                 orm.Ado.ExecuteNonQuery("""
                     CREATE UNIQUE INDEX IF NOT EXISTS uk_building_city_queue

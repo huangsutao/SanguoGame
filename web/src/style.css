@@ -293,6 +293,21 @@ input {
   margin: 0 0 12px;
 }
 
+.mission-bar {
+  height: 6px;
+  margin: 6px 0 4px;
+  background: #2a2418;
+  border: 1px solid #4a4338;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.mission-bar > i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #8a6a3a, #c9a45a);
+}
+
 .queue-banner {
   display: flex;
   align-items: center;

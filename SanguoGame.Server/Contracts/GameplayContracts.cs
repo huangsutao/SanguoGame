@@ -68,7 +68,8 @@ public sealed record MarchDto(
     DateTime DepartAt,
     DateTime ArriveAt,
     MarchStatus Status,
-    bool Mine);
+    bool Mine,
+    MarchKind Kind = MarchKind.Attack);
 
 public sealed record ArmyOverviewDto(
     long CityId,

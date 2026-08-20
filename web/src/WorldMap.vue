@@ -127,7 +127,7 @@ function draw(): void {
     sy: number;
     angle: number;
     mine: boolean;
-    kind: "march" | "transport";
+    kind: "march" | "scout" | "transport";
   };
   const movers: Mover[] = [];
 
@@ -163,7 +163,7 @@ function draw(): void {
     arriveAt: string,
     mine: boolean,
     roundTrip: boolean,
-    kind: "march" | "transport",
+    kind: "march" | "scout" | "transport",
     stroke: string
   ) => {
     const t = Math.min(
@@ -201,7 +201,18 @@ function draw(): void {
   };
 
   for (const item of props.world.marches) {
-    placeMover(item.fromX, item.fromY, item.toX, item.toY, item.departAt, item.arriveAt, item.mine, false, "march", "#d4b46a");
+    placeMover(
+      item.fromX,
+      item.fromY,
+      item.toX,
+      item.toY,
+      item.departAt,
+      item.arriveAt,
+      item.mine,
+      false,
+      item.kind === "scout" ? "scout" : "march",
+      item.kind === "scout" ? "#7eb6d9" : "#d4b46a"
+    );
   }
   for (const item of props.world.transports ?? []) {
     placeMover(
@@ -274,7 +285,13 @@ function draw(): void {
       mover.sy + bob + Math.sin(mover.angle) * (unitSize * 0.58)
     );
     ctx.rotate(mover.angle);
-    ctx.fillStyle = mover.mine ? (mover.kind === "transport" ? "#8ee0c4" : "#e8c97a") : "#8aa0b4";
+    ctx.fillStyle = mover.mine
+      ? mover.kind === "transport"
+        ? "#8ee0c4"
+        : mover.kind === "scout"
+          ? "#9fd0ea"
+          : "#e8c97a"
+      : "#8aa0b4";
     ctx.beginPath();
     ctx.moveTo(7, 0);
     ctx.lineTo(-4, 5);

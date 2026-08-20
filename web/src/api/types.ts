@@ -236,3 +236,91 @@ export interface MarchTarget {
   targetId: number;
   label: string;
 }
+
+export type MailType = "system" | "battle" | "alliance";
+
+export interface MailDto {
+  id: number;
+  type: MailType;
+  title: string;
+  body: string;
+  relatedType?: string;
+  relatedId?: number;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export interface MailListDto {
+  unreadCount: number;
+  items: MailDto[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
+export type AllianceRole = "leader" | "officer" | "member";
+
+export interface AllianceMemberDto {
+  characterId: number;
+  name: string;
+  role: AllianceRole;
+  joinedAt: string;
+}
+
+export interface AllianceSummaryDto {
+  id: number;
+  name: string;
+  memberCount: number;
+  leaderName: string;
+}
+
+export interface AllianceDetailDto {
+  id: number;
+  name: string;
+  notice: string;
+  leaderCharacterId: number;
+  memberCount: number;
+  myRole?: AllianceRole;
+  members: AllianceMemberDto[];
+}
+
+export interface AllianceInviteDto {
+  id: number;
+  allianceId: number;
+  allianceName: string;
+  inviterName: string;
+  createdAt: string;
+}
+
+export interface AllianceApplicationDto {
+  id: number;
+  allianceId: number;
+  characterId: number;
+  characterName: string;
+  createdAt: string;
+}
+
+export interface AlliancePendingDto {
+  invites: AllianceInviteDto[];
+  applications: AllianceApplicationDto[];
+}
+
+export type RankingType = "power" | "troops" | "loot";
+
+export interface RankingEntryDto {
+  rank: number;
+  cityId: number;
+  characterName: string;
+  cityName: string;
+  score: number;
+  isAi: boolean;
+  allianceName?: string;
+}
+
+export interface RankingDto {
+  type: RankingType;
+  serverTime: string;
+  myRank?: number;
+  myScore: number;
+  items: RankingEntryDto[];
+}

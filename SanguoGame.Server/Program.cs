@@ -15,6 +15,7 @@ using SanguoGame.Server.Jobs;
 using SanguoGame.Server.Json;
 using SanguoGame.Server.Options;
 using SanguoGame.Server.Security;
+
 namespace SanguoGame.Server;
 
 public class Program
@@ -26,22 +27,30 @@ public class Program
         AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
         var builder = WebApplication.CreateBuilder(args);
+        var testing = builder.Configuration.GetValue("Testing:DisableBackgroundJobs", false);
 
         builder.Services.AddInfrastructure(builder.Configuration);
         builder.Services.AddGameAuth(builder.Configuration, builder.Environment);
-        builder.Services.AddHangfire(config => config
-            .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
-            .UseSimpleAssemblyNameTypeSerializer()
-            .UseRecommendedSerializerSettings()
-            .UsePostgreSqlStorage(
-                options => options.UseNpgsqlConnection(builder.Configuration.GetConnectionString("Default")),
-                new PostgreSqlStorageOptions
-                {
-                    SchemaName = "hangfire",
-                    PrepareSchemaIfNecessary = true
-                }));
-        builder.Services.AddHangfireServer();
-        builder.Services.AddHostedService<GameBootHostedService>();
+        if (testing)
+        {
+            builder.Services.AddSingleton<IBackgroundJobClient, NoopBackgroundJobClient>();
+        }
+        else
+        {
+            builder.Services.AddHangfire(config => config
+                .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+                .UseSimpleAssemblyNameTypeSerializer()
+                .UseRecommendedSerializerSettings()
+                .UsePostgreSqlStorage(
+                    options => options.UseNpgsqlConnection(builder.Configuration.GetConnectionString("Default")),
+                    new PostgreSqlStorageOptions
+                    {
+                        SchemaName = "hangfire",
+                        PrepareSchemaIfNecessary = true
+                    }));
+            builder.Services.AddHangfireServer();
+            builder.Services.AddHostedService<GameBootHostedService>();
+        }
         builder.Services.AddSignalR()
             .AddJsonProtocol(options =>
             {
@@ -51,34 +60,37 @@ public class Program
                 options.PayloadSerializerOptions.Converters.Add(new UtcDateTimeJsonConverter());
             });
         builder.Services.AddOpenApi();
-        builder.Services.AddRateLimiter(options =>
+        if (!testing)
         {
-            options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-            options.AddPolicy("auth", httpContext =>
-                RateLimitPartition.GetFixedWindowLimiter(
-                    httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-                    _ => new FixedWindowRateLimiterOptions
-                    {
-                        PermitLimit = 20,
-                        Window = TimeSpan.FromMinutes(1),
-                        QueueLimit = 0,
-                        AutoReplenishment = true
-                    }));
-            options.OnRejected = async (context, cancellationToken) =>
+            builder.Services.AddRateLimiter(options =>
             {
-                var http = context.HttpContext;
-                if (http.Response.HasStarted)
+                options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+                options.AddPolicy("auth", httpContext =>
+                    RateLimitPartition.GetFixedWindowLimiter(
+                        httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                        _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 20,
+                            Window = TimeSpan.FromMinutes(1),
+                            QueueLimit = 0,
+                            AutoReplenishment = true
+                        }));
+                options.OnRejected = async (context, cancellationToken) =>
                 {
-                    return;
-                }
+                    var http = context.HttpContext;
+                    if (http.Response.HasStarted)
+                    {
+                        return;
+                    }
 
-                http.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-                var envelope = ApiResult.Fail(ErrorCodes.TooManyRequests, "请求过于频繁");
-                envelope.TraceId = ApiTrace.GetTraceId(http);
-                var jsonOptions = http.RequestServices.GetRequiredService<IOptions<JsonOptions>>().Value.JsonSerializerOptions;
-                await http.Response.WriteAsJsonAsync(envelope, jsonOptions, cancellationToken);
-            };
-        });
+                    http.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+                    var envelope = ApiResult.Fail(ErrorCodes.TooManyRequests, "请求过于频繁");
+                    envelope.TraceId = ApiTrace.GetTraceId(http);
+                    var jsonOptions = http.RequestServices.GetRequiredService<IOptions<JsonOptions>>().Value.JsonSerializerOptions;
+                    await http.Response.WriteAsJsonAsync(envelope, jsonOptions, cancellationToken);
+                };
+            });
+        }
 
         var origins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>()
             ?? ["http://localhost:5173"];
@@ -123,18 +135,24 @@ public class Program
             app.UseHttpsRedirection();
         }
         app.UseCors("web");
-        app.UseRateLimiter();
+        if (!testing)
+        {
+            app.UseRateLimiter();
+        }
         app.UseAuthentication();
         app.UseAuthorization();
 
         app.MapControllers();
         app.MapHub<GameHub>("/hubs/game");
 
-        var aiTickMinutes = Math.Max(1, app.Configuration.GetValue("WorldMap:AiTickMinutes", 5));
-        RecurringJob.AddOrUpdate<AiTickJob>(
-            "ai-tick",
-            job => job.Execute(),
-            $"*/{aiTickMinutes} * * * *");
+        if (!testing)
+        {
+            var aiTickMinutes = Math.Max(1, app.Configuration.GetValue("WorldMap:AiTickMinutes", 5));
+            RecurringJob.AddOrUpdate<AiTickJob>(
+                "ai-tick",
+                job => job.Execute(),
+                $"*/{aiTickMinutes} * * * *");
+        }
 
         app.Run();
     }

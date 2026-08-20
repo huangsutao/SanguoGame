@@ -18,7 +18,23 @@ import {
   recruit,
   upgradeBuilding,
   upgradeField,
-  upgradeWall
+  upgradeWall,
+  fetchMail,
+  readMail,
+  readAllMail,
+  fetchRankings,
+  fetchAlliances,
+  fetchMyAlliance,
+  fetchAlliancePending,
+  createAlliance,
+  applyAlliance,
+  inviteAlliance,
+  acceptAllianceInvite,
+  declineAllianceInvite,
+  acceptAllianceApplication,
+  rejectAllianceApplication,
+  leaveAlliance,
+  dissolveAlliance
 } from "./api/game";
 import { createGameHub } from "./api/hub";
 import { ApiError } from "./api/types";
@@ -31,7 +47,13 @@ import type {
   BattleReportDto,
   SessionResponse,
   WallsOverviewDto,
-  WorldDto
+  WorldDto,
+  MailListDto,
+  RankingDto,
+  RankingType,
+  AllianceDetailDto,
+  AlliancePendingDto,
+  AllianceSummaryDto
 } from "./api/types";
 import { clearTokens, getAccessToken, getRefreshToken, saveTokens, setUnauthorizedHandler } from "./session";
 import type { HubConnection } from "@microsoft/signalr";
@@ -42,7 +64,7 @@ const busy = ref(false);
 const error = ref("");
 const notice = ref("");
 const mode = ref<"login" | "register">("login");
-const tab = ref<"city" | "army" | "map" | "reports">("city");
+const tab = ref<"city" | "army" | "map" | "reports" | "mail" | "ranks" | "alliance">("city");
 const session = ref<SessionResponse | null>(null);
 const overview = ref<BuildingsOverviewDto | null>(null);
 const fields = ref<FieldsOverviewDto | null>(null);
@@ -51,6 +73,14 @@ const army = ref<ArmyOverviewDto | null>(null);
 const world = ref<WorldDto | null>(null);
 const reports = ref<PagedResult<BattleReportDto> | null>(null);
 const reportsPage = ref(1);
+const mail = ref<MailListDto | null>(null);
+const ranking = ref<RankingDto | null>(null);
+const rankingType = ref<RankingType>("power");
+const alliance = ref<AllianceDetailDto | null>(null);
+const allianceList = ref<PagedResult<AllianceSummaryDto> | null>(null);
+const alliancePending = ref<AlliancePendingDto | null>(null);
+const allianceName = ref("");
+const inviteName = ref("");
 const selected = ref<MarchTarget | null>(null);
 const nowMs = ref(Date.now());
 const recruitType = ref("infantry");
@@ -79,6 +109,12 @@ const troopLabel: Record<string, string> = {
   infantry: "步兵",
   archer: "弓兵",
   cavalry: "骑兵"
+};
+
+const allianceRoleLabel: Record<string, string> = {
+  leader: "盟主",
+  officer: "官员",
+  member: "成员"
 };
 
 let hub: HubConnection | null = null;
@@ -177,8 +213,31 @@ async function loadMoreReports(): Promise<void> {
   }
 }
 
+async function loadMail(): Promise<void> {
+  mail.value = await fetchMail();
+}
+
+async function loadRankings(): Promise<void> {
+  ranking.value = await fetchRankings(rankingType.value);
+}
+
+async function loadAlliance(): Promise<void> {
+  const [list, pending] = await Promise.all([fetchAlliances(), fetchAlliancePending()]);
+  allianceList.value = list;
+  alliancePending.value = pending;
+  try {
+    alliance.value = await fetchMyAlliance();
+  } catch (err) {
+    if (err instanceof ApiError && err.code === 40922) {
+      alliance.value = null;
+      return;
+    }
+    throw err;
+  }
+}
+
 async function loadAll(): Promise<void> {
-  await Promise.all([loadCity(), loadArmy(), loadWorld(), loadReports()]);
+  await Promise.all([loadCity(), loadArmy(), loadWorld(), loadReports(), loadMail(), loadRankings(), loadAlliance()]);
 }
 
 async function connectHub(): Promise<void> {
@@ -219,6 +278,11 @@ onMounted(async () => {
     army.value = null;
     world.value = null;
     reports.value = null;
+    mail.value = null;
+    ranking.value = null;
+    alliance.value = null;
+    allianceList.value = null;
+    alliancePending.value = null;
     void disconnectHub();
   });
 
@@ -257,6 +321,11 @@ watch(hasCity, async (ready) => {
     army.value = null;
     world.value = null;
     reports.value = null;
+    mail.value = null;
+    ranking.value = null;
+    alliance.value = null;
+    allianceList.value = null;
+    alliancePending.value = null;
     await disconnectHub();
     return;
   }
@@ -448,6 +517,108 @@ function onSelectTarget(target: MarchTarget): void {
   notice.value = `已选择 ${target.label}`;
 }
 
+async function run(action: () => Promise<void>): Promise<void> {
+  error.value = "";
+  notice.value = "";
+  busy.value = true;
+  try {
+    await action();
+  } catch (err) {
+    fail(err);
+  } finally {
+    busy.value = false;
+  }
+}
+
+async function submitReadMail(id: number): Promise<void> {
+  await run(async () => {
+    await readMail(id);
+    await loadMail();
+  });
+}
+
+async function submitReadAllMail(): Promise<void> {
+  await run(async () => {
+    await readAllMail();
+    await loadMail();
+  });
+}
+
+async function changeRanking(type: RankingType): Promise<void> {
+  rankingType.value = type;
+  await run(async () => {
+    await loadRankings();
+  });
+}
+
+async function submitCreateAlliance(): Promise<void> {
+  await run(async () => {
+    alliance.value = await createAlliance(allianceName.value.trim());
+    allianceName.value = "";
+    await loadAlliance();
+    notice.value = "联盟已创建";
+  });
+}
+
+async function submitApplyAlliance(id: number): Promise<void> {
+  await run(async () => {
+    await applyAlliance(id);
+    await loadAlliance();
+    notice.value = "已发出申请";
+  });
+}
+
+async function submitInvite(): Promise<void> {
+  await run(async () => {
+    await inviteAlliance(inviteName.value.trim());
+    inviteName.value = "";
+    await loadAlliance();
+    notice.value = "已发出邀请";
+  });
+}
+
+async function submitAcceptInvite(id: number): Promise<void> {
+  await run(async () => {
+    await acceptAllianceInvite(id);
+    await loadAlliance();
+  });
+}
+
+async function submitDeclineInvite(id: number): Promise<void> {
+  await run(async () => {
+    await declineAllianceInvite(id);
+    await loadAlliance();
+  });
+}
+
+async function submitAcceptApplication(id: number): Promise<void> {
+  await run(async () => {
+    await acceptAllianceApplication(id);
+    await loadAlliance();
+  });
+}
+
+async function submitRejectApplication(id: number): Promise<void> {
+  await run(async () => {
+    await rejectAllianceApplication(id);
+    await loadAlliance();
+  });
+}
+
+async function submitLeaveAlliance(): Promise<void> {
+  await run(async () => {
+    await leaveAlliance();
+    await loadAlliance();
+  });
+}
+
+async function submitDissolveAlliance(): Promise<void> {
+  await run(async () => {
+    await dissolveAlliance();
+    await loadAlliance();
+  });
+}
+
 async function submitLogout(): Promise<void> {
   error.value = "";
   const refresh = getRefreshToken();
@@ -467,6 +638,11 @@ async function submitLogout(): Promise<void> {
     army.value = null;
     world.value = null;
     reports.value = null;
+    mail.value = null;
+    ranking.value = null;
+    alliance.value = null;
+    allianceList.value = null;
+    alliancePending.value = null;
     password.value = "";
   }
 }
@@ -476,7 +652,7 @@ async function submitLogout(): Promise<void> {
   <main class="page" :class="{ wide: hasCity }">
     <header class="header">
       <h1>战国</h1>
-      <p class="sub">建城 · 内政 · 城防 · 出征 · 地图</p>
+      <p class="sub">建城 · 内政 · 出征 · 地图 · 联盟</p>
     </header>
 
     <p v-if="loading" class="hint">加载中…</p>
@@ -537,11 +713,16 @@ async function submitLogout(): Promise<void> {
             <p v-if="protectionText(army?.protectionUntil)" class="hint">{{ protectionText(army?.protectionUntil) }}</p>
           </section>
 
-          <div class="tabs four">
+          <div class="tabs play">
             <button type="button" :class="{ active: tab === 'city' }" @click="tab = 'city'">城池</button>
             <button type="button" :class="{ active: tab === 'army' }" @click="tab = 'army'">军队</button>
             <button type="button" :class="{ active: tab === 'map' }" @click="tab = 'map'">地图</button>
             <button type="button" :class="{ active: tab === 'reports' }" @click="tab = 'reports'">战报</button>
+            <button type="button" :class="{ active: tab === 'mail' }" @click="tab = 'mail'">
+              邮件{{ mail?.unreadCount ? ` ${mail.unreadCount}` : "" }}
+            </button>
+            <button type="button" :class="{ active: tab === 'ranks' }" @click="tab = 'ranks'">排行</button>
+            <button type="button" :class="{ active: tab === 'alliance' }" @click="tab = 'alliance'">联盟</button>
           </div>
 
           <section v-if="tab === 'city' && overview" class="block">
@@ -717,6 +898,118 @@ async function submitLogout(): Promise<void> {
             >
               加载更多
             </button>
+          </section>
+
+          <section v-if="tab === 'mail'" class="block">
+            <h2>邮件</h2>
+            <p class="hint">未读 {{ mail?.unreadCount ?? 0 }}</p>
+            <p>
+              <button type="button" :disabled="busy || !mail?.unreadCount" @click="submitReadAllMail">全部已读</button>
+            </p>
+            <p v-if="!mail?.items.length" class="hint">暂无邮件</p>
+            <ul class="buildings">
+              <li v-for="item in mail?.items ?? []" :key="item.id">
+                <div>
+                  <strong>{{ item.isRead ? item.title : `● ${item.title}` }}</strong>
+                  <p class="hint">{{ item.body }}</p>
+                </div>
+                <button v-if="!item.isRead" type="button" :disabled="busy" @click="submitReadMail(item.id)">已读</button>
+              </li>
+            </ul>
+          </section>
+
+          <section v-if="tab === 'ranks'" class="block">
+            <h2>排行</h2>
+            <div class="tabs">
+              <button type="button" :class="{ active: rankingType === 'power' }" @click="changeRanking('power')">国力</button>
+              <button type="button" :class="{ active: rankingType === 'troops' }" @click="changeRanking('troops')">兵力</button>
+              <button type="button" :class="{ active: rankingType === 'loot' }" @click="changeRanking('loot')">掠夺</button>
+            </div>
+            <p class="hint">我的名次 {{ ranking?.myRank ?? "-" }} · 分数 {{ ranking?.myScore ?? 0 }}</p>
+            <ul class="buildings">
+              <li v-for="item in ranking?.items ?? []" :key="item.cityId">
+                <div>
+                  <strong>{{ item.rank }}. {{ item.characterName }}</strong>
+                  <span class="meta">{{ item.score }}{{ item.isAi ? " · AI" : "" }}{{ item.allianceName ? ` · ${item.allianceName}` : "" }}</span>
+                </div>
+              </li>
+            </ul>
+          </section>
+
+          <section v-if="tab === 'alliance'" class="block">
+            <h2>联盟</h2>
+            <template v-if="alliance">
+              <p class="res">{{ alliance.name }} · {{ alliance.memberCount }} 人 · 我是 {{ allianceRoleLabel[alliance.myRole ?? "member"] }}</p>
+              <p v-if="alliance.notice" class="hint">{{ alliance.notice }}</p>
+              <ul class="buildings">
+                <li v-for="item in alliance.members" :key="item.characterId">
+                  <div>
+                    <strong>{{ item.name }}</strong>
+                    <span class="meta">{{ allianceRoleLabel[item.role] ?? item.role }}</span>
+                  </div>
+                </li>
+              </ul>
+              <div v-if="alliance.myRole === 'leader' || alliance.myRole === 'officer'" class="form inline">
+                <label>
+                  邀请角色名
+                  <input v-model="inviteName" maxlength="12" />
+                </label>
+                <button type="button" :disabled="busy" @click="submitInvite">邀请</button>
+              </div>
+              <ul v-if="alliancePending?.applications.length" class="buildings">
+                <li v-for="item in alliancePending.applications" :key="item.id">
+                  <div>
+                    <strong>{{ item.characterName }}</strong>
+                    <span class="hint">申请加入</span>
+                  </div>
+                  <div class="actions">
+                    <button type="button" :disabled="busy" @click="submitAcceptApplication(item.id)">通过</button>
+                    <button type="button" :disabled="busy" @click="submitRejectApplication(item.id)">拒绝</button>
+                  </div>
+                </li>
+              </ul>
+              <p>
+                <button type="button" :disabled="busy" @click="submitLeaveAlliance">退出</button>
+                <button
+                  v-if="alliance.myRole === 'leader'"
+                  type="button"
+                  :disabled="busy"
+                  @click="submitDissolveAlliance"
+                >
+                  解散
+                </button>
+              </p>
+            </template>
+            <template v-else>
+              <form class="form" @submit.prevent="submitCreateAlliance">
+                <label>
+                  联盟名
+                  <input v-model="allianceName" maxlength="12" placeholder="2～12 位" />
+                </label>
+                <button type="submit" :disabled="busy">创建联盟</button>
+              </form>
+              <ul v-if="alliancePending?.invites.length" class="buildings">
+                <li v-for="item in alliancePending.invites" :key="item.id">
+                  <div>
+                    <strong>{{ item.allianceName }}</strong>
+                    <span class="hint">{{ item.inviterName }} 邀请</span>
+                  </div>
+                  <div class="actions">
+                    <button type="button" :disabled="busy" @click="submitAcceptInvite(item.id)">接受</button>
+                    <button type="button" :disabled="busy" @click="submitDeclineInvite(item.id)">拒绝</button>
+                  </div>
+                </li>
+              </ul>
+              <ul class="buildings">
+                <li v-for="item in allianceList?.items ?? []" :key="item.id">
+                  <div>
+                    <strong>{{ item.name }}</strong>
+                    <span class="meta">{{ item.memberCount }} 人 · 盟主 {{ item.leaderName }}</span>
+                  </div>
+                  <button type="button" :disabled="busy" @click="submitApplyAlliance(item.id)">申请</button>
+                </li>
+              </ul>
+            </template>
           </section>
         </template>
       </div>

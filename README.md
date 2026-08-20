@@ -16,8 +16,8 @@
 | 城墙 | 箭塔 / 城门 / 陷阱，与全城队列共用 |
 | 军队 / 行军 | 征兵、出征 NPC / 玩家、到点结算、战报 |
 | AI 玩家 | 启动补齐 AI 城；Hangfire tick 升级 / 征兵 / 出征 |
-| 网页端 | `web/`：城池、城墙、出征、战报、Canvas 大地图 |
-| 其余 | 联盟 / 邮件 / 排行另开设计，见 [路线图](Docs/design-roadmap.md) |
+| 网页端 | `web/`：城池、城墙、出征、战报、Canvas 大地图、邮件、排行、联盟 |
+| 其余 | 联调与数值微调，见 [路线图](Docs/design-roadmap.md) |
 
 ## 仓库结构
 
@@ -28,7 +28,7 @@ SanguoGame/
 ├── SanguoGame.sln                 # 服务端解决方案
 ├── SanguoGame.Server/             # API + SignalR + 进程启动
 ├── SanguoGame.Core/               # 错误码、业务异常；后续纯规则
-├── SanguoGame.Infrastructure/     # FreeSql + PostgreSQL；后续 Redis、Hangfire
+├── SanguoGame.Infrastructure/     # FreeSql + PostgreSQL；Hangfire 存储走同一库
 └── web/                           # Vue 3 独立前端（npm）
 ```
 
@@ -106,9 +106,10 @@ SanguoGame/
 5. 出兵打 NPC 据点 + 战报
 6. 打其他玩家（掠夺、保护 CD）
 7. AI 玩家
-8. 地图表现、联盟、邮件、排行等扩展
+8. 地图表现
+9. 邮件、排行、联盟
 
-**当前第一版玩法已按第 0～8 步落地。** 联调与数值微调可随时进行；联盟 / 邮件 / 排行另开设计。
+**当前第一版玩法已按第 0～9 步落地。** 联调与数值微调可随时进行。
 
 ## 详细设计文档
 
@@ -130,6 +131,9 @@ SanguoGame/
 | AI 玩家 | [Docs/design-ai.md](Docs/design-ai.md) | 已定稿 |
 | 实时推送与定时任务 | [Docs/design-realtime.md](Docs/design-realtime.md) | 已定稿 |
 | 网页端与前后端通讯 | [Docs/design-frontend-comm.md](Docs/design-frontend-comm.md) | 已定稿 |
+| 邮件 | [Docs/design-mail.md](Docs/design-mail.md) | 已定稿 |
+| 排行 | [Docs/design-ranking.md](Docs/design-ranking.md) | 已定稿 |
+| 联盟 | [Docs/design-alliance.md](Docs/design-alliance.md) | 已定稿 |
 
 ## 本地运行服务端
 
@@ -165,6 +169,16 @@ npm run dev
 ```
 
 浏览器打开 `http://localhost:5173`。开发期 Vite 把 `/api`、`/hubs` 代理到后端，不必改 `VITE_API_BASE`。
+
+## 测试与 CI
+
+需要 Docker（Testcontainers 拉起 PostgreSQL）或环境变量 `TEST_POSTGRES`（CI 用 service 容器）：
+
+```bash
+dotnet test SanguoGame.sln
+```
+
+GitHub Actions 在推送与 PR 时跑后端测试和 `web/` 的 `npm run build`。
 
 ## 相关约定
 

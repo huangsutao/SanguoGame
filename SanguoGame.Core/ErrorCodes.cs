@@ -67,6 +67,27 @@ public static class ErrorCodes
     /// <summary>行军数量已达上限。</summary>
     public const int MarchLimit = 40917;
 
+    /// <summary>同联盟不可交战。</summary>
+    public const int SameAlliance = 40918;
+
+    /// <summary>已加入联盟。</summary>
+    public const int AlreadyInAlliance = 40919;
+
+    /// <summary>联盟名已被占用。</summary>
+    public const int AllianceNameTaken = 40920;
+
+    /// <summary>联盟人数已满。</summary>
+    public const int AllianceFull = 40921;
+
+    /// <summary>未加入联盟。</summary>
+    public const int NotInAlliance = 40922;
+
+    /// <summary>联盟权限不足。</summary>
+    public const int AlliancePermission = 40923;
+
+    /// <summary>邀请或申请已失效。</summary>
+    public const int AllianceInviteInvalid = 40924;
+
     /// <summary>请求过于频繁。</summary>
     public const int TooManyRequests = 42900;
 

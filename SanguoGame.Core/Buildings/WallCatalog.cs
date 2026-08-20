@@ -18,9 +18,9 @@ public static class WallCatalog
 {
     public static IReadOnlyList<WallDef> All { get; } =
     [
-        new("arrowTower", "箭塔", 10, 2, 35, new ResourceAmount(120, 160, 80, 20), 8, 0),
-        new("gate", "城门", 10, 2, 30, new ResourceAmount(150, 200, 40, 20), 6, 0),
-        new("trap", "陷阱", 10, 3, 40, new ResourceAmount(80, 80, 120, 40), 0, 2)
+        new("arrowTower", "箭塔", 10, 2, 18, new ResourceAmount(120, 160, 80, 20), 8, 0),
+        new("gate", "城门", 10, 2, 15, new ResourceAmount(150, 200, 40, 20), 6, 0),
+        new("trap", "陷阱", 10, 3, 20, new ResourceAmount(80, 80, 120, 40), 0, 2)
     ];
 
     public static WallDef? Find(string wallType) =>

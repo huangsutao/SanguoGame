@@ -55,6 +55,7 @@ public sealed class GameplayApiTests
         var (_, recruited) = await api.Post<ArmyOverviewDto>("/api/army/recruit", new { troopType = "infantry", count = 5 });
         Assert.Equal(0, recruited.Code);
         Assert.Equal(5, recruited.Data?.Troops.Infantry);
+        Assert.Contains(recruited.Data!.TroopTypes, t => t.Type == "infantry" && t.RequireBarracksLevel == 1);
     }
 
     [SkippableFact]

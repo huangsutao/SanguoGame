@@ -7,11 +7,11 @@ public static class InnerBuildingCatalog
 
     public static IReadOnlyList<InnerBuildingDef> All { get; } =
     [
-        new("palace", "主殿", BuildingCategory.Civil, 10, 0, 30, new ResourceAmount(200, 200, 80, 40)),
-        new("house", "民居", BuildingCategory.Civil, 10, 1, 20, new ResourceAmount(120, 80, 20, 10)),
-        new("warehouse", "仓库", BuildingCategory.Civil, 10, 1, 25, new ResourceAmount(100, 160, 40, 20)),
-        new("academy", "书院", BuildingCategory.Tech, 10, 2, 40, new ResourceAmount(150, 150, 60, 80)),
-        new("barracks", "兵营", BuildingCategory.Military, 10, 2, 40, new ResourceAmount(180, 100, 120, 30))
+        new("palace", "主殿", BuildingCategory.Civil, 10, 0, 15, new ResourceAmount(200, 200, 80, 40)),
+        new("house", "民居", BuildingCategory.Civil, 10, 1, 10, new ResourceAmount(120, 80, 20, 10)),
+        new("warehouse", "仓库", BuildingCategory.Civil, 10, 1, 12, new ResourceAmount(100, 160, 40, 20)),
+        new("academy", "书院", BuildingCategory.Tech, 10, 2, 20, new ResourceAmount(150, 150, 60, 80)),
+        new("barracks", "兵营", BuildingCategory.Military, 10, 2, 20, new ResourceAmount(180, 100, 120, 30))
     ];
 
     public static InnerBuildingDef? Find(string buildingType) =>

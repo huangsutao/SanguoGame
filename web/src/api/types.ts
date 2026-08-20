@@ -151,6 +151,13 @@ export interface TroopDto {
   cavalry: number;
 }
 
+export interface TroopTypeDto {
+  type: string;
+  name: string;
+  requireBarracksLevel: number;
+  unitCost: ResourceDto;
+}
+
 export interface MarchDto {
   id: number;
   targetType: "outpost" | "city";
@@ -177,6 +184,7 @@ export interface ArmyOverviewDto {
   wallDefense: number;
   protectionUntil?: string;
   marches: MarchDto[];
+  troopTypes: TroopTypeDto[];
 }
 
 export interface BattleReportDto {

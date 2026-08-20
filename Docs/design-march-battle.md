@@ -47,7 +47,7 @@ durationSeconds = max(MinMarchSeconds, distance * SecondsPerTile)
 ArriveAt = now + durationSeconds
 ```
 
-配置（`WorldMap`）：`SecondsPerTile` 默认 20，`MinMarchSeconds` 默认 30。同一城同时最多 `MaxMarchesPerCity` 支行军（默认 3），超出 → `40917`。
+配置（`WorldMap`）：`SecondsPerTile` 默认 20，`MinMarchSeconds` 默认 30。同一城同时最多 `MaxMarchesPerCity` 支行军（默认 3），超出 → `40917`。本地 Development 用 `appsettings.Development.json` 把每格改成 5 秒、最短 10 秒，方便联调。
 
 兵力必须至少 1，且不超过城上现有；不足 → `40910`。目标不存在 → `40400`。打自己的城 → `40914`。
 

@@ -1,6 +1,7 @@
 using FreeSql;
 using Microsoft.Extensions.Options;
 using SanguoGame.Core.Army;
+using SanguoGame.Core.Market;
 using SanguoGame.Core.World;
 using SanguoGame.Infrastructure.Entities;
 using SanguoGame.Server.Contracts;
@@ -82,7 +83,19 @@ public sealed class WorldService
             return ArmyService.MapMarch(m, mine, includeTroops: mine);
         }).ToList();
 
-        return new WorldDto(_map.Width, _map.Height, now, origin, cityDtos, outpostDtos, marchDtos);
+        var markets = await _orm.Select<MarketEntity>().ToListAsync(cancellationToken);
+        var marketDtos = markets.Select(m => new WorldMarketDto(m.Id, m.Name, m.X, m.Y)).ToList();
+
+        var transports = await _orm.Select<TransportEntity>()
+            .Where(t => t.Status == TransportStatus.InTransit)
+            .ToListAsync(cancellationToken);
+        var transportDtos = transports.Select(t =>
+        {
+            var mine = myCityId is long id && (t.FromCityId == id || t.ToCityId == id);
+            return TransportService.MapTransport(t, mine);
+        }).ToList();
+
+        return new WorldDto(_map.Width, _map.Height, now, origin, cityDtos, outpostDtos, marchDtos, marketDtos, transportDtos);
     }
 
     public async Task RecoverDueOutpostsAsync(CancellationToken cancellationToken)

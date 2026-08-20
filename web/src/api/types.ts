@@ -237,10 +237,70 @@ export interface WorldDto {
   cities: WorldCityDto[];
   outposts: WorldOutpostDto[];
   marches: MarchDto[];
+  markets: WorldMarketDto[];
+  transports: TransportDto[];
+}
+
+export interface WorldMarketDto {
+  id: number;
+  name: string;
+  x: number;
+  y: number;
+}
+
+export type TransportKind = "market" | "aid";
+export type TransportStatus = "inTransit" | "settled";
+
+export interface TransportDto {
+  id: number;
+  kind: TransportKind;
+  fromCityId: number;
+  toCityId: number;
+  targetId: number;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  cargo: ResourceDto;
+  credit: ResourceDto;
+  departAt: string;
+  arriveAt: string;
+  status: TransportStatus;
+  mine: boolean;
+}
+
+export interface MarketRateDto {
+  fromResource: string;
+  toResource: string;
+  fromAmount: number;
+  toAmount: number;
+}
+
+export interface MarketItemDto {
+  id: number;
+  name: string;
+  x: number;
+  y: number;
+  durationSeconds: number;
+  roundTripSeconds: number;
+}
+
+export interface MarketsOverviewDto {
+  cityId: number;
+  serverTime: string;
+  resources: ResourceDto;
+  resourceCap: number;
+  cargoCap: number;
+  taxRate: number;
+  minAmount: number;
+  values: ResourceDto;
+  rates: MarketRateDto[];
+  markets: MarketItemDto[];
+  transports: TransportDto[];
 }
 
 export interface MarchTarget {
-  targetType: "outpost" | "city";
+  targetType: "outpost" | "city" | "market";
   targetId: number;
   label: string;
 }
@@ -273,6 +333,7 @@ export interface AllianceMemberDto {
   name: string;
   role: AllianceRole;
   joinedAt: string;
+  cityId: number;
 }
 
 export interface AllianceSummaryDto {

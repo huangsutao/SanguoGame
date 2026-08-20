@@ -88,6 +88,18 @@ public static class ErrorCodes
     /// <summary>邀请或申请已失效。</summary>
     public const int AllianceInviteInvalid = 40924;
 
+    /// <summary>不能运给自己。</summary>
+    public const int CannotAidSelf = 40925;
+
+    /// <summary>非同联盟不可运输。</summary>
+    public const int NotAlliedTransport = 40926;
+
+    /// <summary>运输数量已达上限。</summary>
+    public const int TransportLimit = 40927;
+
+    /// <summary>运量超限或兑换数量非法。</summary>
+    public const int InvalidTrade = 40928;
+
     /// <summary>请求过于频繁。</summary>
     public const int TooManyRequests = 42900;
 

@@ -14,8 +14,8 @@
 |----|------|
 | 规模 | 200 × 200（配置 `WorldMap:Width` / `Height`，默认 200） |
 | 坐标 | 整数；`x ∈ [0, Width)`，`y ∈ [0, Height)`；含 `(0,0)` |
-| 占格 | 一座主城占 **1 格**；一座 NPC 据点占 **1 格** |
-| 占用存储 | `sg_city (x, y)` 与 `sg_outpost (x, y)` 各自唯一；选址时两者都算占用 |
+| 占格 | 一座主城占 **1 格**；一座 NPC 据点占 **1 格**；一座市集占 **1 格** |
+| 占用存储 | `sg_city (x, y)`、`sg_outpost (x, y)`、`sg_market (x, y)` 各自唯一；选址时都算占用 |
 | 选址 | 客户端不传坐标。在 `[0,W) × [0,H)` 均匀随机取格，占用则重抽，最多 `WorldMap:PlacementMaxAttempts` 次（默认 64） |
 | 距离 | 第一版 **不** 做与邻城最小间距 |
 | 行军距离 | 曼哈顿 `\|dx\| + \|dy\|`，见第 5 步 |
@@ -72,10 +72,14 @@
       "status": "marching",
       "mine": true
     }
-  ]
+  ],
+  "markets": [
+    { "id": 1, "name": "市集·15,20", "x": 15, "y": 20 }
+  ],
+  "transports": []
 }
 ```
 
-`owner`：`self` / `ai` / `player`。`protected` 仅对他人城有意义。行军位置展示按 `departAt`～`arriveAt` 线性插值，**仅前端**，结算仍以服务端 `arriveAt` 为准。
+`owner`：`self` / `ai` / `player`。`protected` 仅对他人城有意义。行军位置展示按 `departAt`～`arriveAt` 线性插值，**仅前端**，结算仍以服务端 `arriveAt` 为准。市集与运输见第 10 步 [市集](design-market.md)：市集运输线前半程去市集、后半程折返。
 
-拖拽、滚轮缩放；点击标记可作为出征目标。不做全图实时视野广播。
+拖拽、滚轮缩放；点击据点 / 玩家城可作为出征目标；点击市集进入兑换，不出征。不做全图实时视野广播。

@@ -12,6 +12,11 @@ internal static class WorldOccupancy
             return true;
         }
 
-        return await orm.Select<OutpostEntity>().AnyAsync(o => o.X == x && o.Y == y, cancellationToken);
+        if (await orm.Select<OutpostEntity>().AnyAsync(o => o.X == x && o.Y == y, cancellationToken))
+        {
+            return true;
+        }
+
+        return await orm.Select<MarketEntity>().AnyAsync(m => m.X == x && m.Y == y, cancellationToken);
     }
 }

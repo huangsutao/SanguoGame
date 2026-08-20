@@ -12,6 +12,8 @@ public sealed class WorldMapOptions
 
     public int OutpostCount { get; set; } = 24;
 
+    public int MarketCount { get; set; } = 8;
+
     public int AiCityCount { get; set; } = 8;
 
     public int SecondsPerTile { get; set; } = 20;
@@ -19,6 +21,8 @@ public sealed class WorldMapOptions
     public int MinMarchSeconds { get; set; } = 30;
 
     public int MaxMarchesPerCity { get; set; } = 3;
+
+    public int MaxTransportsPerCity { get; set; } = 3;
 
     public int ProtectionSeconds { get; set; } = 7200;
 

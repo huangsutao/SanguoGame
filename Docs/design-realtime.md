@@ -18,7 +18,7 @@
 
 JSON 信封见 [统一协议](design-api.md)。身份：`Authorization: Bearer <JWT>`，`[Authorize]`。
 
-耗时操作立刻返回 `finishAt` / `arriveAt`，完成后再推送。城内 / 城墙 / 城外升级：`POST /api/buildings|walls|fields/upgrade`。出征：`POST /api/army/march`。
+耗时操作立刻返回 `finishAt` / `arriveAt`，完成后再推送。城内 / 城墙 / 城外升级：`POST /api/buildings|walls|fields/upgrade`。出征：`POST /api/army/march`。市集兑换 / 同盟运输：`POST /api/markets/trade|aid`。
 
 ## SignalR
 
@@ -39,6 +39,8 @@ payload 仍是 `{ code, message, data, traceId }`。`BuildComplete` 的 `data` �
 | `BuildComplete` | 建造 / 升级到点生效 |
 | `MarchArrived` | 行军到达并出战报（第 5 步） |
 | `CityAttacked` | 本城被打（第 6 步） |
+| `TransportArrived` | 市集兑换或运输到达出发城（第 10 步） |
+| `ResourceReceived` | 同盟运输送达接收城（第 10 步） |
 
 网页：
 
@@ -57,7 +59,7 @@ const connection = new signalR.HubConnectionBuilder()
 
 建造 Job：`CompleteInnerBuilding(cityId, buildingType, targetLevel)`，在 `finishAt` 触发。行军 Job：`CompleteMarch(marchId)`，在 `arriveAt` 触发。AI：周期任务 `AiTick`。失败可重试；业务幂等。
 
-进程重启后未到期任务仍由 Hangfire 执行。启动时扫描已到期仍为 `upgrading` 的建筑、已到期仍为 `marching` 的行军并补结算；并补齐 NPC 据点与 AI 城。
+进程重启后未到期任务仍由 Hangfire 执行。启动时扫描已到期仍为 `upgrading` 的建筑、已到期仍为 `marching` 的行军、已到期仍为 `inTransit` 的运输并补结算；并补齐 NPC 据点、市集与 AI 城。
 
 ## 按城串行
 

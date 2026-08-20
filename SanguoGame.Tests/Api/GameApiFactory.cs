@@ -7,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using SanguoGame.Core.Army;
 using SanguoGame.Core.Buildings;
+using SanguoGame.Core.Market;
 using SanguoGame.Infrastructure.Entities;
 using SanguoGame.Server;
 using SanguoGame.Server.Services;
@@ -17,6 +18,11 @@ namespace SanguoGame.Tests.Api;
 
 public sealed class GameApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
+    static GameApiFactory()
+    {
+        AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+    }
+
     private PostgreSqlContainer? _container;
     private string _connectionString = "";
 
@@ -75,6 +81,7 @@ public sealed class GameApiFactory : WebApplicationFactory<Program>, IAsyncLifet
         Environment.SetEnvironmentVariable("Testing__DisableBackgroundJobs", "true");
         Environment.SetEnvironmentVariable("WorldMap__AiCityCount", "0");
         Environment.SetEnvironmentVariable("WorldMap__OutpostCount", "0");
+        Environment.SetEnvironmentVariable("WorldMap__MarketCount", "0");
         Environment.SetEnvironmentVariable("WorldMap__Width", "40");
         Environment.SetEnvironmentVariable("WorldMap__Height", "40");
     }
@@ -132,10 +139,12 @@ public sealed class GameApiFactory : WebApplicationFactory<Program>, IAsyncLifet
                 ["WorldMap:Height"] = "40",
                 ["WorldMap:PlacementMaxAttempts"] = "64",
                 ["WorldMap:OutpostCount"] = "0",
+                ["WorldMap:MarketCount"] = "0",
                 ["WorldMap:AiCityCount"] = "0",
                 ["WorldMap:SecondsPerTile"] = "1",
                 ["WorldMap:MinMarchSeconds"] = "30",
                 ["WorldMap:MaxMarchesPerCity"] = "3",
+                ["WorldMap:MaxTransportsPerCity"] = "3",
                 ["WorldMap:ProtectionSeconds"] = "7200",
                 ["Cors:Origins:0"] = "http://localhost:5173"
             });
@@ -170,8 +179,10 @@ public sealed class GameApiFactory : WebApplicationFactory<Program>, IAsyncLifet
                 sg_mail,
                 sg_battle_report,
                 sg_march,
+                sg_transport,
                 sg_building,
                 sg_outpost,
+                sg_market,
                 sg_city,
                 sg_refresh_token,
                 sg_character,
@@ -204,6 +215,30 @@ public sealed class GameApiFactory : WebApplicationFactory<Program>, IAsyncLifet
             .RecoverDueAsync(CancellationToken.None);
     }
 
+    public async Task ForceCompleteTransportsAsync()
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var orm = scope.ServiceProvider.GetRequiredService<IFreeSql>();
+        await orm.Update<TransportEntity>()
+            .Where(t => t.Status == TransportStatus.InTransit)
+            .Set(t => t.ArriveAt, DateTime.UtcNow.AddMinutes(-1))
+            .ExecuteAffrowsAsync();
+        await scope.ServiceProvider.GetRequiredService<TransportService>()
+            .RecoverDueAsync(CancellationToken.None);
+    }
+
+    public async Task<long> InsertMarketAsync(int x, int y)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var orm = scope.ServiceProvider.GetRequiredService<IFreeSql>();
+        return await orm.Insert(new MarketEntity
+        {
+            Name = $"测试市集·{x},{y}",
+            X = x,
+            Y = y
+        }).ExecuteIdentityAsync();
+    }
+
     public async Task<long> InsertOutpostAsync(int x, int y, int garrison = 1)
     {
         await using var scope = Services.CreateAsyncScope();
@@ -231,6 +266,11 @@ public sealed class GameApiFactory : WebApplicationFactory<Program>, IAsyncLifet
         foreach (var outpost in await orm.Select<OutpostEntity>().ToListAsync(CancellationToken.None))
         {
             occupied.Add((outpost.X, outpost.Y));
+        }
+
+        foreach (var market in await orm.Select<MarketEntity>().ToListAsync(CancellationToken.None))
+        {
+            occupied.Add((market.X, market.Y));
         }
 
         for (var distance = 1; distance < 80; distance++)

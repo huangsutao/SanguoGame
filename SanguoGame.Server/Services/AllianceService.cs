@@ -617,6 +617,10 @@ public sealed class AllianceService
             ? []
             : (await _orm.Select<CharacterEntity>().Where(c => characterIds.Contains(c.Id)).ToListAsync(cancellationToken))
                 .ToDictionary(c => c.Id, c => c.Name);
+        var cities = characterIds.Length == 0
+            ? []
+            : (await _orm.Select<CityEntity>().Where(c => characterIds.Contains(c.CharacterId)).ToListAsync(cancellationToken))
+                .ToDictionary(c => c.CharacterId, c => c.Id);
         var myRole = members.FirstOrDefault(m => m.CharacterId == viewerCharacterId)?.Role;
         return new AllianceDetailDto(
             alliance.Id,
@@ -632,7 +636,8 @@ public sealed class AllianceService
                     m.CharacterId,
                     names.GetValueOrDefault(m.CharacterId, ""),
                     m.Role,
-                    m.JoinedAt))
+                    m.JoinedAt,
+                    cities.GetValueOrDefault(m.CharacterId)))
                 .ToList());
     }
 

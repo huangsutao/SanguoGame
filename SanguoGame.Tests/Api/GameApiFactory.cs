@@ -41,23 +41,32 @@ public sealed class GameApiFactory : WebApplicationFactory<Program>, IAsyncLifet
         }
         else
         {
-            try
+            const string local = "Host=127.0.0.1;Port=5432;Database=sanguogame_test;Username=sanguo;Password=sanguo";
+            if (await CanConnectAsync(local))
             {
-                _container = new PostgreSqlBuilder()
-                    .WithImage("postgres:16-alpine")
-                    .WithDatabase("sanguogame_test")
-                    .WithUsername("sanguo")
-                    .WithPassword("sanguo")
-                    .Build();
-                await _container.StartAsync();
-                _connectionString = _container.GetConnectionString();
+                _connectionString = local;
                 Available = true;
             }
-            catch (Exception ex)
+            else
             {
-                Available = false;
-                UnavailableReason = ex.Message;
-                return;
+                try
+                {
+                    _container = new PostgreSqlBuilder()
+                        .WithImage("postgres:16-alpine")
+                        .WithDatabase("sanguogame_test")
+                        .WithUsername("sanguo")
+                        .WithPassword("sanguo")
+                        .Build();
+                    await _container.StartAsync();
+                    _connectionString = _container.GetConnectionString();
+                    Available = true;
+                }
+                catch (Exception ex)
+                {
+                    Available = false;
+                    UnavailableReason = ex.Message;
+                    return;
+                }
             }
         }
 
@@ -68,6 +77,30 @@ public sealed class GameApiFactory : WebApplicationFactory<Program>, IAsyncLifet
         Environment.SetEnvironmentVariable("WorldMap__OutpostCount", "0");
         Environment.SetEnvironmentVariable("WorldMap__Width", "40");
         Environment.SetEnvironmentVariable("WorldMap__Height", "40");
+    }
+
+    private static async Task<bool> CanConnectAsync(string connectionString)
+    {
+        try
+        {
+            var orm = new FreeSqlBuilder()
+                .UseConnectionString(DataType.PostgreSQL, connectionString)
+                .UseAutoSyncStructure(false)
+                .Build();
+            try
+            {
+                await orm.Ado.ExecuteNonQueryAsync("SELECT 1");
+                return true;
+            }
+            finally
+            {
+                orm.Dispose();
+            }
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public new async Task DisposeAsync()
@@ -113,7 +146,38 @@ public sealed class GameApiFactory : WebApplicationFactory<Program>, IAsyncLifet
     {
         var client = CreateClient();
         client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+        ResetDatabaseOnce();
         return client;
+    }
+
+    private int _reset;
+
+    private void ResetDatabaseOnce()
+    {
+        if (Interlocked.Exchange(ref _reset, 1) == 1)
+        {
+            return;
+        }
+
+        using var scope = Services.CreateScope();
+        var orm = scope.ServiceProvider.GetRequiredService<IFreeSql>();
+        orm.Ado.ExecuteNonQuery("""
+            TRUNCATE TABLE
+                sg_alliance_application,
+                sg_alliance_invite,
+                sg_alliance_member,
+                sg_alliance,
+                sg_mail,
+                sg_battle_report,
+                sg_march,
+                sg_building,
+                sg_outpost,
+                sg_city,
+                sg_refresh_token,
+                sg_character,
+                sg_account
+            RESTART IDENTITY CASCADE
+            """);
     }
 
     public async Task ForceCompleteBuildingsAsync()
@@ -140,7 +204,7 @@ public sealed class GameApiFactory : WebApplicationFactory<Program>, IAsyncLifet
             .RecoverDueAsync(CancellationToken.None);
     }
 
-    public async Task<long> InsertOutpostAsync(int x, int y)
+    public async Task<long> InsertOutpostAsync(int x, int y, int garrison = 1)
     {
         await using var scope = Services.CreateAsyncScope();
         var orm = scope.ServiceProvider.GetRequiredService<IFreeSql>();
@@ -150,8 +214,74 @@ public sealed class GameApiFactory : WebApplicationFactory<Program>, IAsyncLifet
             Name = $"测试村·{x},{y}",
             X = x,
             Y = y,
-            Garrison = 1
+            Garrison = garrison
         }).ExecuteIdentityAsync();
+    }
+
+    public async Task<(int X, int Y)> PickEmptyCellAsync(int nearX, int nearY)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var orm = scope.ServiceProvider.GetRequiredService<IFreeSql>();
+        var occupied = new HashSet<(int, int)>();
+        foreach (var city in await orm.Select<CityEntity>().ToListAsync(CancellationToken.None))
+        {
+            occupied.Add((city.X, city.Y));
+        }
+
+        foreach (var outpost in await orm.Select<OutpostEntity>().ToListAsync(CancellationToken.None))
+        {
+            occupied.Add((outpost.X, outpost.Y));
+        }
+
+        for (var distance = 1; distance < 80; distance++)
+        {
+            for (var x = 0; x < 40; x++)
+            {
+                for (var y = 0; y < 40; y++)
+                {
+                    if (Math.Abs(x - nearX) + Math.Abs(y - nearY) != distance || occupied.Contains((x, y)))
+                    {
+                        continue;
+                    }
+
+                    return (x, y);
+                }
+            }
+        }
+
+        throw new InvalidOperationException("测试地图没有空地");
+    }
+
+    public async Task SetCityResourcesAsync(long cityId, int grain, int wood, int iron, int copper)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var orm = scope.ServiceProvider.GetRequiredService<IFreeSql>();
+        var updated = await orm.Update<CityEntity>()
+            .Where(c => c.Id == cityId)
+            .Set(c => c.Grain, grain)
+            .Set(c => c.Wood, wood)
+            .Set(c => c.Iron, iron)
+            .Set(c => c.Copper, copper)
+            .ExecuteAffrowsAsync();
+        if (updated != 1)
+        {
+            throw new InvalidOperationException($"未能写入城资源 cityId={cityId}");
+        }
+    }
+
+    public async Task BackdateFieldAsync(long cityId, string fieldType, TimeSpan age)
+    {
+        var at = DateTime.UtcNow.Add(-age);
+        await using var scope = Services.CreateAsyncScope();
+        var orm = scope.ServiceProvider.GetRequiredService<IFreeSql>();
+        var updated = await orm.Update<BuildingEntity>()
+            .Where(b => b.CityId == cityId && b.Type == fieldType)
+            .Set(b => b.LastCollectedAt, at)
+            .ExecuteAffrowsAsync();
+        if (updated != 1)
+        {
+            throw new InvalidOperationException($"未能回拨田收取时间 cityId={cityId} type={fieldType}");
+        }
     }
 }
 

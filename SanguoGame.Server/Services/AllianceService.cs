@@ -1,3 +1,4 @@
+using System.Data.Common;
 using FreeSql;
 using SanguoGame.Core;
 using SanguoGame.Core.Social;
@@ -62,22 +63,25 @@ public sealed class AllianceService
 
         try
         {
-            alliance.Id = await _orm.Insert(alliance).ExecuteIdentityAsync(cancellationToken);
+            await InTransactionAsync(async transaction =>
+            {
+                alliance.Id = await _orm.Insert(alliance).WithTransaction(transaction).ExecuteIdentityAsync(cancellationToken);
+                await _orm.Insert(new AllianceMemberEntity
+                {
+                    AllianceId = alliance.Id,
+                    CharacterId = character.Id,
+                    Role = AllianceRole.Leader,
+                    JoinedAt = now
+                }).WithTransaction(transaction).ExecuteAffrowsAsync(cancellationToken);
+                await CancelPendingForCharacterAsync(character.Id, cancellationToken, transaction);
+                return 0;
+            }, cancellationToken);
         }
         catch (Exception ex) when (DbErrors.IsUniqueViolation(ex))
         {
             throw new BizException(ErrorCodes.AllianceNameTaken, "联盟名已被占用");
         }
 
-        await _orm.Insert(new AllianceMemberEntity
-        {
-            AllianceId = alliance.Id,
-            CharacterId = character.Id,
-            Role = AllianceRole.Leader,
-            JoinedAt = now
-        }).ExecuteAffrowsAsync(cancellationToken);
-
-        await CancelPendingForCharacterAsync(character.Id, cancellationToken);
         return await GetDetailAsync(alliance.Id, character.Id, cancellationToken);
     }
 
@@ -357,34 +361,56 @@ public sealed class AllianceService
         var members = await _orm.Select<AllianceMemberEntity>()
             .Where(m => m.AllianceId == alliance.Id)
             .ToListAsync(cancellationToken);
+        var dissolveByLeave = member.Role == AllianceRole.Leader && members.Count == 1;
 
-        if (member.Role == AllianceRole.Leader)
+        await InTransactionAsync(async transaction =>
         {
-            if (members.Count == 1)
+            if (dissolveByLeave)
             {
-                await DissolveInternalAsync(alliance, cancellationToken);
-                return;
+                await DissolveInternalAsync(alliance, cancellationToken, transaction);
+                return 0;
             }
 
-            var successor = members
-                .Where(m => m.CharacterId != member.CharacterId)
-                .OrderBy(m => m.Role == AllianceRole.Officer ? 0 : 1)
-                .ThenBy(m => m.JoinedAt)
-                .ThenBy(m => m.Id)
-                .First();
-            successor.Role = AllianceRole.Leader;
-            alliance.LeaderCharacterId = successor.CharacterId;
-            await _orm.Update<AllianceEntity>()
-                .SetSource(alliance)
-                .UpdateColumns(a => a.LeaderCharacterId)
-                .ExecuteAffrowsAsync(cancellationToken);
-            await _orm.Update<AllianceMemberEntity>()
-                .SetSource(successor)
-                .UpdateColumns(m => m.Role)
-                .ExecuteAffrowsAsync(cancellationToken);
-        }
+            if (member.Role == AllianceRole.Leader)
+            {
+                var successor = members
+                    .Where(m => m.CharacterId != member.CharacterId)
+                    .OrderBy(m => m.Role == AllianceRole.Officer ? 0 : 1)
+                    .ThenBy(m => m.JoinedAt)
+                    .ThenBy(m => m.Id)
+                    .First();
+                successor.Role = AllianceRole.Leader;
+                alliance.LeaderCharacterId = successor.CharacterId;
+                await _orm.Update<AllianceEntity>()
+                    .WithTransaction(transaction)
+                    .SetSource(alliance)
+                    .UpdateColumns(a => a.LeaderCharacterId)
+                    .ExecuteAffrowsAsync(cancellationToken);
+                await _orm.Update<AllianceMemberEntity>()
+                    .WithTransaction(transaction)
+                    .SetSource(successor)
+                    .UpdateColumns(m => m.Role)
+                    .ExecuteAffrowsAsync(cancellationToken);
+            }
 
-        await _orm.Delete<AllianceMemberEntity>().Where(m => m.Id == member.Id).ExecuteAffrowsAsync(cancellationToken);
+            await _orm.Delete<AllianceMemberEntity>()
+                .WithTransaction(transaction)
+                .Where(m => m.Id == member.Id)
+                .ExecuteAffrowsAsync(cancellationToken);
+            return 0;
+        }, cancellationToken);
+
+        if (dissolveByLeave)
+        {
+            await _mail.SendManyAsync(
+                members.Select(m => m.CharacterId).ToList(),
+                MailType.Alliance,
+                $"{alliance.Name} 已解散",
+                "联盟已解散",
+                "alliance",
+                alliance.Id,
+                cancellationToken);
+        }
     }
 
     public async Task KickAsync(long accountId, KickAllianceRequest request, CancellationToken cancellationToken)
@@ -441,7 +467,24 @@ public sealed class AllianceService
         }
 
         var alliance = await RequireAllianceAsync(member.AllianceId, cancellationToken);
-        await DissolveInternalAsync(alliance, cancellationToken);
+        var memberIds = (await _orm.Select<AllianceMemberEntity>()
+            .Where(m => m.AllianceId == alliance.Id)
+            .ToListAsync(cancellationToken))
+            .Select(m => m.CharacterId)
+            .ToList();
+        await InTransactionAsync(async transaction =>
+        {
+            await DissolveInternalAsync(alliance, cancellationToken, transaction);
+            return 0;
+        }, cancellationToken);
+        await _mail.SendManyAsync(
+            memberIds,
+            MailType.Alliance,
+            $"{alliance.Name} 已解散",
+            "联盟已解散",
+            "alliance",
+            alliance.Id,
+            cancellationToken);
     }
 
     private async Task JoinAsync(CharacterEntity character, long allianceId, CancellationToken cancellationToken)
@@ -454,53 +497,86 @@ public sealed class AllianceService
         await EnsureCapacityAsync(allianceId, cancellationToken);
         try
         {
-            await _orm.Insert(new AllianceMemberEntity
+            await InTransactionAsync(async transaction =>
             {
-                AllianceId = allianceId,
-                CharacterId = character.Id,
-                Role = AllianceRole.Member,
-                JoinedAt = DateTime.UtcNow
-            }).ExecuteAffrowsAsync(cancellationToken);
+                await _orm.Insert(new AllianceMemberEntity
+                {
+                    AllianceId = allianceId,
+                    CharacterId = character.Id,
+                    Role = AllianceRole.Member,
+                    JoinedAt = DateTime.UtcNow
+                }).WithTransaction(transaction).ExecuteAffrowsAsync(cancellationToken);
+                await CancelPendingForCharacterAsync(character.Id, cancellationToken, transaction);
+                return 0;
+            }, cancellationToken);
         }
         catch (Exception ex) when (DbErrors.IsUniqueViolation(ex))
         {
             throw new BizException(ErrorCodes.AlreadyInAlliance, "已加入联盟");
         }
-
-        await CancelPendingForCharacterAsync(character.Id, cancellationToken);
     }
 
-    private async Task DissolveInternalAsync(AllianceEntity alliance, CancellationToken cancellationToken)
+    private async Task DissolveInternalAsync(
+        AllianceEntity alliance,
+        CancellationToken cancellationToken,
+        DbTransaction transaction)
     {
-        var memberIds = (await _orm.Select<AllianceMemberEntity>()
+        await _orm.Delete<AllianceMemberEntity>()
+            .WithTransaction(transaction)
             .Where(m => m.AllianceId == alliance.Id)
-            .ToListAsync(cancellationToken))
-            .Select(m => m.CharacterId)
-            .ToList();
-        await _orm.Delete<AllianceMemberEntity>().Where(m => m.AllianceId == alliance.Id).ExecuteAffrowsAsync(cancellationToken);
-        await _orm.Delete<AllianceInviteEntity>().Where(i => i.AllianceId == alliance.Id).ExecuteAffrowsAsync(cancellationToken);
-        await _orm.Delete<AllianceApplicationEntity>().Where(a => a.AllianceId == alliance.Id).ExecuteAffrowsAsync(cancellationToken);
-        await _orm.Delete<AllianceEntity>().Where(a => a.Id == alliance.Id).ExecuteAffrowsAsync(cancellationToken);
-        await _mail.SendManyAsync(
-            memberIds,
-            MailType.Alliance,
-            $"{alliance.Name} 已解散",
-            "联盟已解散",
-            "alliance",
-            alliance.Id,
-            cancellationToken);
+            .ExecuteAffrowsAsync(cancellationToken);
+        await _orm.Delete<AllianceInviteEntity>()
+            .WithTransaction(transaction)
+            .Where(i => i.AllianceId == alliance.Id)
+            .ExecuteAffrowsAsync(cancellationToken);
+        await _orm.Delete<AllianceApplicationEntity>()
+            .WithTransaction(transaction)
+            .Where(a => a.AllianceId == alliance.Id)
+            .ExecuteAffrowsAsync(cancellationToken);
+        await _orm.Delete<AllianceEntity>()
+            .WithTransaction(transaction)
+            .Where(a => a.Id == alliance.Id)
+            .ExecuteAffrowsAsync(cancellationToken);
     }
 
-    private async Task CancelPendingForCharacterAsync(long characterId, CancellationToken cancellationToken)
+    private async Task CancelPendingForCharacterAsync(
+        long characterId,
+        CancellationToken cancellationToken,
+        DbTransaction? transaction = null)
     {
-        await _orm.Update<AllianceInviteEntity>()
+        var invites = _orm.Update<AllianceInviteEntity>()
             .Where(i => i.TargetCharacterId == characterId && i.Status == AllianceRequestStatus.Pending)
-            .Set(i => i.Status, AllianceRequestStatus.Declined)
-            .ExecuteAffrowsAsync(cancellationToken);
-        await _orm.Update<AllianceApplicationEntity>()
+            .Set(i => i.Status, AllianceRequestStatus.Declined);
+        var applications = _orm.Update<AllianceApplicationEntity>()
             .Where(a => a.CharacterId == characterId && a.Status == AllianceRequestStatus.Pending)
-            .Set(a => a.Status, AllianceRequestStatus.Declined)
-            .ExecuteAffrowsAsync(cancellationToken);
+            .Set(a => a.Status, AllianceRequestStatus.Declined);
+        if (transaction is not null)
+        {
+            invites = invites.WithTransaction(transaction);
+            applications = applications.WithTransaction(transaction);
+        }
+
+        await invites.ExecuteAffrowsAsync(cancellationToken);
+        await applications.ExecuteAffrowsAsync(cancellationToken);
+    }
+
+    private async Task<T> InTransactionAsync<T>(
+        Func<DbTransaction, Task<T>> action,
+        CancellationToken cancellationToken)
+    {
+        using var conn = await _orm.Ado.MasterPool.GetAsync();
+        await using var transaction = await conn.Value.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            var result = await action(transaction);
+            await transaction.CommitAsync(cancellationToken);
+            return result;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
     }
 
     private async Task EnsureCapacityAsync(long allianceId, CancellationToken cancellationToken)

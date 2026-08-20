@@ -34,7 +34,9 @@ import {
   acceptAllianceApplication,
   rejectAllianceApplication,
   leaveAlliance,
-  dissolveAlliance
+  dissolveAlliance,
+  kickAllianceMember,
+  updateAllianceNotice
 } from "./api/game";
 import { createGameHub } from "./api/hub";
 import { ApiError } from "./api/types";
@@ -82,6 +84,7 @@ const allianceList = ref<PagedResult<AllianceSummaryDto> | null>(null);
 const alliancePending = ref<AlliancePendingDto | null>(null);
 const allianceName = ref("");
 const inviteName = ref("");
+const allianceNoticeDraft = ref("");
 const selected = ref<MarchTarget | null>(null);
 const nowMs = ref(Date.now());
 const recruitType = ref("infantry");
@@ -250,9 +253,11 @@ async function loadAlliance(): Promise<void> {
   alliancePending.value = pending;
   try {
     alliance.value = await fetchMyAlliance();
+    allianceNoticeDraft.value = alliance.value.notice ?? "";
   } catch (err) {
     if (err instanceof ApiError && err.code === 40922) {
       alliance.value = null;
+      allianceNoticeDraft.value = "";
       return;
     }
     throw err;
@@ -642,6 +647,22 @@ async function submitDissolveAlliance(): Promise<void> {
   });
 }
 
+async function submitKick(characterId: number): Promise<void> {
+  await run(async () => {
+    await kickAllianceMember(characterId);
+    await loadAlliance();
+    notice.value = "已移出该成员";
+  });
+}
+
+async function submitAllianceNotice(): Promise<void> {
+  await run(async () => {
+    await updateAllianceNotice(allianceNoticeDraft.value.trim());
+    await loadAlliance();
+    notice.value = "公告已更新";
+  });
+}
+
 async function submitLogout(): Promise<void> {
   error.value = "";
   const refresh = getRefreshToken();
@@ -973,8 +994,26 @@ async function submitLogout(): Promise<void> {
                     <strong>{{ item.name }}</strong>
                     <span class="meta">{{ allianceRoleLabel[item.role] ?? item.role }}</span>
                   </div>
+                  <button
+                    v-if="
+                      item.characterId !== session?.character?.id &&
+                      (alliance.myRole === 'leader' || (alliance.myRole === 'officer' && item.role === 'member'))
+                    "
+                    type="button"
+                    :disabled="busy"
+                    @click="submitKick(item.characterId)"
+                  >
+                    踢出
+                  </button>
                 </li>
               </ul>
+              <div v-if="alliance.myRole === 'leader' || alliance.myRole === 'officer'" class="form">
+                <label>
+                  联盟公告
+                  <input v-model="allianceNoticeDraft" maxlength="200" placeholder="最多 200 字" />
+                </label>
+                <button type="button" :disabled="busy" @click="submitAllianceNotice">保存公告</button>
+              </div>
               <div v-if="alliance.myRole === 'leader' || alliance.myRole === 'officer'" class="form inline">
                 <label>
                   邀请角色名

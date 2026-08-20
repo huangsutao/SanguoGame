@@ -168,3 +168,7 @@ export function dissolveAlliance(): Promise<unknown> {
 export function kickAllianceMember(characterId: number): Promise<unknown> {
   return request("post", "/api/alliances/kick", { characterId });
 }
+
+export function updateAllianceNotice(notice: string): Promise<unknown> {
+  return request("post", "/api/alliances/notice", { notice });
+}

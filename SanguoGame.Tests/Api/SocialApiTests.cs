@@ -1,4 +1,5 @@
 using SanguoGame.Core;
+using SanguoGame.Core.Social;
 using SanguoGame.Server.Contracts;
 using Xunit;
 
@@ -19,11 +20,21 @@ public sealed class SocialApiTests
     {
         SkipIfUnavailable();
         var api = new ApiClient(_factory.CreateJsonClient());
-        await api.RegisterCityAsync();
+        var (cityId, _, _) = await api.RegisterCityAsync();
         var (_, power) = await api.Get<RankingDto>("/api/rankings?type=power");
         Assert.Equal(0, power.Code);
         Assert.NotNull(power.Data?.MyRank);
-        Assert.Contains(power.Data!.Items, item => item.Rank == power.Data.MyRank);
+        Assert.True(power.Data!.Items.Count <= RankingRules.TopSize);
+        var mine = power.Data.Items.FirstOrDefault(item => item.CityId == cityId);
+        if (power.Data.MyRank <= RankingRules.TopSize)
+        {
+            Assert.NotNull(mine);
+            Assert.Equal(power.Data.MyRank, mine.Rank);
+        }
+        else
+        {
+            Assert.Null(mine);
+        }
 
         var (_, bad) = await api.Get<RankingDto>("/api/rankings?type=unknown");
         Assert.Equal(ErrorCodes.ValidationFailed, bad.Code);

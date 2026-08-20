@@ -53,7 +53,8 @@ import type {
   RankingType,
   AllianceDetailDto,
   AlliancePendingDto,
-  AllianceSummaryDto
+  AllianceSummaryDto,
+  BuildingCostDto
 } from "./api/types";
 import { clearTokens, getAccessToken, getRefreshToken, saveTokens, setUnauthorizedHandler } from "./session";
 import type { HubConnection } from "@microsoft/signalr";
@@ -97,6 +98,20 @@ const loggedIn = computed(() => session.value !== null);
 const hasCharacter = computed(() => Boolean(session.value?.character));
 const hasCity = computed(() => Boolean(session.value?.city));
 const queue = computed(() => overview.value?.queue ?? fields.value?.queue ?? walls.value?.queue);
+
+const selectedTroop = computed(() =>
+  army.value?.troopTypes?.find((item) => item.type === recruitType.value)
+);
+
+const recruitCostText = computed(() => {
+  const def = selectedTroop.value;
+  const n = Math.max(0, Number(recruitCount.value) || 0);
+  if (!def || n <= 0) {
+    return "";
+  }
+  const c = def.unitCost;
+  return `消耗 粮${c.grain * n} 木${c.wood * n} 铁${c.iron * n} 铜${c.copper * n}（兵营 ≥ ${def.requireBarracksLevel}）`;
+});
 
 const resourceLabel: Record<string, string> = {
   grain: "粮",
@@ -163,6 +178,14 @@ function blockedText(reason?: string): string {
     default:
       return "";
   }
+}
+
+function costText(next?: BuildingCostDto): string {
+  if (!next) {
+    return "";
+  }
+  const c = next.cost;
+  return `${next.durationSeconds}秒 · 粮${c.grain} 木${c.wood} 铁${c.iron} 铜${c.copper}`;
 }
 
 function protectionText(until?: string): string {
@@ -747,6 +770,7 @@ async function submitLogout(): Promise<void> {
                   <span v-else-if="blockedText(item.blockedReason)" class="hint">{{
                     blockedText(item.blockedReason)
                   }}</span>
+                  <p v-if="item.next" class="hint">{{ costText(item.next) }}</p>
                 </div>
                 <button
                   type="button"
@@ -784,6 +808,7 @@ async function submitLogout(): Promise<void> {
                   <span v-else-if="blockedText(item.blockedReason)" class="hint">{{
                     blockedText(item.blockedReason)
                   }}</span>
+                  <p v-if="item.next" class="hint">{{ costText(item.next) }}</p>
                 </div>
                 <div class="actions">
                   <button type="button" :disabled="busy || item.level < 1" @click="submitCollect(item.type)">
@@ -816,6 +841,7 @@ async function submitLogout(): Promise<void> {
                   <span v-else-if="blockedText(item.blockedReason)" class="hint">{{
                     blockedText(item.blockedReason)
                   }}</span>
+                  <p v-if="item.next" class="hint">{{ costText(item.next) }}</p>
                 </div>
                 <button
                   type="button"
@@ -849,7 +875,7 @@ async function submitLogout(): Promise<void> {
               </label>
               <button type="button" :disabled="busy" @click="submitRecruit">征兵</button>
             </div>
-            <p class="hint">步兵需兵营 1 级，弓兵 2 级，骑兵 3 级。征兵即时扣资源。</p>
+            <p class="hint">{{ recruitCostText || "步兵需兵营 1 级，弓兵 2 级，骑兵 3 级。征兵即时扣资源。" }}</p>
             <h3>出征</h3>
             <p class="hint">{{ selected ? `目标：${selected.label}` : "在地图点选据点或其他玩家城" }}</p>
             <div class="form inline">

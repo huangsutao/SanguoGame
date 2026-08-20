@@ -106,7 +106,12 @@ public sealed class ArmyService
             barracksLevel,
             WallCatalog.WallDefense(levels),
             city.ProtectionUntil,
-            marches.Select(m => MapMarch(m, true)).ToList());
+            marches.Select(m => MapMarch(m, true)).ToList(),
+            TroopCatalog.All.Select(def => new TroopTypeDto(
+                def.Type,
+                def.Name,
+                def.RequireBarracksLevel,
+                new ResourceDto(def.UnitCost.Grain, def.UnitCost.Wood, def.UnitCost.Iron, def.UnitCost.Copper))).ToList());
     }
 
     internal static MarchDto MapMarch(MarchEntity march, bool mine, bool includeTroops = true) =>

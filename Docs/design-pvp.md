@@ -48,7 +48,7 @@
 守方在结算中 **战败**（含被掠）后：
 
 ```
-protectionUntil = now + ProtectionSeconds     # 默认 7200
+protectionUntil = now + ProtectionSeconds     # 默认 7200；Development 为 180
 ```
 
 保护期内拒绝新的以该城为目标的出征。已在路上的部队到达后按上一节「途中进入保护」处理。

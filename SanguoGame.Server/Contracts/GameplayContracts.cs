@@ -49,6 +49,12 @@ public sealed class MarchRequest
 
 public sealed record TroopDto(int Infantry, int Archer, int Cavalry);
 
+public sealed record TroopTypeDto(
+    string Type,
+    string Name,
+    int RequireBarracksLevel,
+    ResourceDto UnitCost);
+
 public sealed record MarchDto(
     long Id,
     MarchTargetType TargetType,
@@ -73,7 +79,8 @@ public sealed record ArmyOverviewDto(
     int BarracksLevel,
     int WallDefense,
     DateTime? ProtectionUntil,
-    IReadOnlyList<MarchDto> Marches);
+    IReadOnlyList<MarchDto> Marches,
+    IReadOnlyList<TroopTypeDto> TroopTypes);
 
 public sealed record BattleReportDto(
     long Id,

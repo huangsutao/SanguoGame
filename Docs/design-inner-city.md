@@ -109,13 +109,13 @@ cost[res]       = ceil(baseCost[res]       * 1.5^(L - 1))
 
 | type | 秒 | 粮 | 木 | 铁 | 铜 |
 |------|----|----|----|----|----|
-| palace | 30 | 200 | 200 | 80 | 40 |
-| house | 20 | 120 | 80 | 20 | 10 |
-| warehouse | 25 | 100 | 160 | 40 | 20 |
-| academy | 40 | 150 | 150 | 60 | 80 |
-| barracks | 40 | 180 | 100 | 120 | 30 |
+| palace | 15 | 200 | 200 | 80 | 40 |
+| house | 10 | 120 | 80 | 20 | 10 |
+| warehouse | 12 | 100 | 160 | 40 | 20 |
+| academy | 20 | 150 | 150 | 60 | 80 |
+| barracks | 20 | 180 | 100 | 120 | 30 |
 
-数值放 **Core 配置表**（代码常量或 JSON），不要写死在 Controller。改时长不必改协议。联调可把 `baseDurationSeconds` 再改短。
+数值放 **Core 配置表**（代码常量或 JSON），不要写死在 Controller。改时长不必改协议。第一版联调已把 `baseDurationSeconds` 缩短约一半，方便一局内升到兵营。
 
 已满级：`next` 为 `null`，再点升级 → `40908`。
 

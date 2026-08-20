@@ -16,8 +16,8 @@
 | 城墙 | 箭塔 / 城门 / 陷阱，与全城队列共用 |
 | 军队 / 行军 | 征兵、出征 NPC / 玩家、到点结算、战报 |
 | AI 玩家 | 启动补齐 AI 城；Hangfire tick 升级 / 征兵 / 出征 |
-| 网页端 | `web/`：城池、城墙、出征、战报、Canvas 大地图、邮件、排行、联盟 |
-| 其余 | 联调与数值微调，见 [路线图](Docs/design-roadmap.md) |
+| 网页端 | `web/`：城池、城墙、出征、战报、Canvas 大地图、邮件、排行、联盟；升级与征兵展示消耗 |
+| 其余 | 第一版数值已缩短建造 / 加大田产出；开发环境加快行军。实机联调见 [路线图](Docs/design-roadmap.md) |
 
 ## 仓库结构
 
@@ -109,7 +109,7 @@ SanguoGame/
 8. 地图表现
 9. 邮件、排行、联盟
 
-**当前第一版玩法已按第 0～9 步落地。** 联调与数值微调可随时进行。
+**当前第一版玩法已按第 0～9 步落地，建造时长与田产出已按联调改过。** 开发环境会再缩短行军、保护罩和 AI tick。实机打一局后可按手感再调 Core 配置表。
 
 ## 详细设计文档
 
@@ -169,6 +169,8 @@ npm run dev
 ```
 
 浏览器打开 `http://localhost:5173`。开发期 Vite 把 `/api`、`/hubs` 代理到后端，不必改 `VITE_API_BASE`。
+
+`ASPNETCORE_ENVIRONMENT=Development`（`dotnet run` 默认如此）会读取 `appsettings.Development.json`：行军每格 5 秒、最短 10 秒，保护罩 / 据点恢复 3 分钟，AI 每分钟 tick 一次。生产默认仍是 `appsettings.json` 里的 20 秒/格、2 小时保护。
 
 ## 测试与 CI
 

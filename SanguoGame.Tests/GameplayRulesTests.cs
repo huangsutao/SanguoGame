@@ -20,11 +20,11 @@ public class PvpLootTests
             fields: [new FieldLootInput("farm", 1, lastCollected)],
             now: Now);
 
-        Assert.Equal(330, result.Actual.Grain);
-        Assert.Equal(330, result.AttackerStockAfter.Grain);
+        Assert.Equal(600, result.Actual.Grain);
+        Assert.Equal(600, result.AttackerStockAfter.Grain);
         Assert.Equal(700, result.DefenderStockAfter.Grain);
         var farm = Assert.Single(result.FieldUpdates);
-        Assert.Equal(30, FieldProduction.Pending(60, 300, farm.LastCollectedAt, Now));
+        Assert.Equal(300, FieldProduction.Pending(600, 1500, farm.LastCollectedAt, Now));
     }
 
     [Fact]
@@ -42,7 +42,7 @@ public class PvpLootTests
         Assert.Equal(8000, result.AttackerStockAfter.Grain);
         Assert.Equal(1000, result.DefenderStockAfter.Grain);
         var farm = Assert.Single(result.FieldUpdates);
-        Assert.Equal(40, FieldProduction.Pending(60, 300, farm.LastCollectedAt, Now));
+        Assert.Equal(580, FieldProduction.Pending(600, 1500, farm.LastCollectedAt, Now));
     }
 
     [Fact]
@@ -58,9 +58,9 @@ public class PvpLootTests
 
         Assert.Equal(50, result.Actual.Grain);
         Assert.Equal(50, result.AttackerStockAfter.Grain);
-        Assert.Equal(980, result.DefenderStockAfter.Grain);
+        Assert.Equal(1000, result.DefenderStockAfter.Grain);
         var farm = Assert.Single(result.FieldUpdates);
-        Assert.Equal(30, FieldProduction.Pending(60, 300, farm.LastCollectedAt, Now));
+        Assert.Equal(550, FieldProduction.Pending(600, 1500, farm.LastCollectedAt, Now));
     }
 
     [Fact]
@@ -115,6 +115,27 @@ public class BattleCalculatorTests
         Assert.Equal(a, b);
         Assert.True(a.AttackerAfter.Infantry <= a.AttackerBefore.Infantry);
         Assert.True(a.DefenderAfter.Infantry <= a.DefenderBefore.Infantry);
+    }
+}
+
+public class CatalogPlaytestNumbersTests
+{
+    [Fact]
+    public void PalaceLevel1_TakesFifteenSeconds()
+    {
+        var palace = InnerBuildingCatalog.Find("palace");
+        Assert.NotNull(palace);
+        Assert.Equal(15, InnerBuildingCatalog.DurationSeconds(palace, 1));
+        Assert.Equal(27, InnerBuildingCatalog.DurationSeconds(palace, 2));
+    }
+
+    [Fact]
+    public void FarmLevel1_ProducesSixHundredPerHour()
+    {
+        var farm = OuterFieldCatalog.Find("farm");
+        Assert.NotNull(farm);
+        Assert.Equal(600, farm.RatePerHour(1));
+        Assert.Equal(1500, farm.FieldCap(1));
     }
 }
 

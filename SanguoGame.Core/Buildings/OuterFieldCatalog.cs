@@ -23,10 +23,10 @@ public static class OuterFieldCatalog
 {
     public static IReadOnlyList<OuterFieldDef> All { get; } =
     [
-        new("farm", "良田", "grain", 10, 1, 25, new ResourceAmount(150, 80, 20, 10), 60, 300),
-        new("lumber", "木场", "wood", 10, 1, 25, new ResourceAmount(80, 150, 20, 10), 50, 300),
-        new("ironMine", "铁矿", "iron", 10, 1, 30, new ResourceAmount(100, 100, 80, 20), 40, 300),
-        new("copperMine", "铜矿", "copper", 10, 1, 30, new ResourceAmount(100, 80, 40, 80), 30, 300)
+        new("farm", "良田", "grain", 10, 1, 12, new ResourceAmount(150, 80, 20, 10), 600, 1500),
+        new("lumber", "木场", "wood", 10, 1, 12, new ResourceAmount(80, 150, 20, 10), 500, 1500),
+        new("ironMine", "铁矿", "iron", 10, 1, 15, new ResourceAmount(100, 100, 80, 20), 400, 1500),
+        new("copperMine", "铜矿", "copper", 10, 1, 15, new ResourceAmount(100, 80, 40, 80), 300, 1500)
     ];
 
     public static OuterFieldDef? Find(string fieldType) =>

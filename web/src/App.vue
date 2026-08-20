@@ -65,6 +65,7 @@ import type {
 import { clearTokens, getAccessToken, getRefreshToken, saveTokens, setUnauthorizedHandler } from "./session";
 import type { HubConnection } from "@microsoft/signalr";
 import WorldMap from "./WorldMap.vue";
+import { buildingPortrait, resourceArt, resourceKeys, troopPortrait } from "./art";
 
 const loading = ref(true);
 const busy = ref(false);
@@ -115,22 +116,44 @@ const loggedIn = computed(() => session.value !== null);
 const hasCharacter = computed(() => Boolean(session.value?.character));
 const hasCity = computed(() => Boolean(session.value?.city));
 const queue = computed(() => overview.value?.queue ?? fields.value?.queue ?? walls.value?.queue);
+const hudResources = computed(
+  () =>
+    overview.value?.resources ??
+    fields.value?.resources ??
+    walls.value?.resources ??
+    army.value?.resources ??
+    markets.value?.resources ??
+    null
+);
+const hudCap = computed(
+  () =>
+    overview.value?.resourceCap ??
+    fields.value?.resourceCap ??
+    walls.value?.resourceCap ??
+    army.value?.resourceCap ??
+    markets.value?.resourceCap ??
+    0
+);
+
+function costParts(next?: BuildingCostDto): { key: (typeof resourceKeys)[number]; amount: number }[] {
+  if (!next) {
+    return [];
+  }
+  return resourceKeys
+    .map((key) => ({ key, amount: next.cost[key] }))
+    .filter((item) => item.amount > 0);
+}
+
+function levelWidth(level: number, maxLevel: number): string {
+  if (maxLevel <= 0) {
+    return "0%";
+  }
+  return `${Math.max(0, Math.min(100, (level / maxLevel) * 100))}%`;
+}
 
 const selectedTroop = computed(() =>
   army.value?.troopTypes?.find((item) => item.type === recruitType.value)
 );
-
-const recruitCostText = computed(() => {
-  const def = selectedTroop.value;
-  const n = Math.max(0, Number(recruitCount.value) || 0);
-  if (!def || n <= 0) {
-    return "";
-  }
-  const c = def.unitCost;
-  const p = army.value?.recruitDiscountPercent ?? 0;
-  const hint = p > 0 ? `，征兵减免 ${p}%` : "";
-  return `消耗 粮${c.grain * n} 木${c.wood * n} 铁${c.iron * n} 铜${c.copper * n}（兵营 ≥ ${def.requireBarracksLevel}${hint}）`;
-});
 
 const selectedMarket = computed(() =>
   markets.value?.markets.find((item) => item.id === selectedMarketId.value) ?? null
@@ -246,14 +269,6 @@ function effectsText(effects?: Record<string, number>): string {
       return kind === "percent" ? `${name}+${value}%` : `${name}+${value}`;
     })
     .join(" · ");
-}
-
-function costText(next?: BuildingCostDto): string {
-  if (!next) {
-    return "";
-  }
-  const c = next.cost;
-  return `${next.durationSeconds}秒 · 粮${c.grain} 木${c.wood} 铁${c.iron} 铜${c.copper}`;
 }
 
 function protectionText(until?: string): string {
@@ -839,10 +854,37 @@ async function submitLogout(): Promise<void> {
 
 <template>
   <main class="page" :class="{ wide: hasCity }">
-    <header class="header">
+    <header v-if="!hasCity" class="header splash">
+      <img class="splash-art" src="/art/palace.jpg" alt="" />
       <h1>战国</h1>
       <p class="sub">建城 · 内政 · 出征 · 地图 · 联盟</p>
     </header>
+    <header v-else class="hud-top">
+      <div class="brand">
+        <img class="brand-seal" src="/art/palace.jpg" alt="" />
+        <div>
+          <h1>战国</h1>
+          <p class="city-name">
+            {{ session?.city?.name }} · ({{ session?.city?.x }}, {{ session?.city?.y }})
+            <span v-if="protectionText(army?.protectionUntil)" class="protect">
+              {{ protectionText(army?.protectionUntil) }}
+            </span>
+          </p>
+        </div>
+      </div>
+      <div v-if="hudResources" class="res-bar">
+        <span v-for="key in resourceKeys" :key="key" class="res-chip">
+          <img :src="resourceArt[key]" :alt="resourceLabel[key]" />
+          <b>{{ hudResources[key] }}</b>
+          <small>{{ resourceLabel[key] }}</small>
+        </span>
+      </div>
+      <div class="who">
+        <span>{{ session?.username }}</span>
+        <button type="button" class="link" @click="submitLogout">退出</button>
+      </div>
+    </header>
+    <p v-if="hasCity && hudResources" class="hint cap-line">仓库上限 {{ hudCap }}<template v-if="overview"> · 人口上限 {{ overview.populationCap }}</template></p>
 
     <p v-if="loading" class="hint">加载中…</p>
 
@@ -873,7 +915,7 @@ async function submitLogout(): Promise<void> {
       </form>
 
       <div v-else class="play">
-        <div class="who">
+        <div v-if="!hasCity" class="who">
           <span>账号 {{ session?.username }}</span>
           <button type="button" class="link" @click="submitLogout">退出</button>
         </div>
@@ -896,12 +938,6 @@ async function submitLogout(): Promise<void> {
         </section>
 
         <template v-else>
-          <section class="block city">
-            <h2>{{ session?.city?.name }}</h2>
-            <p class="coord">坐标 ({{ session?.city?.x }}, {{ session?.city?.y }})</p>
-            <p v-if="protectionText(army?.protectionUntil)" class="hint">{{ protectionText(army?.protectionUntil) }}</p>
-          </section>
-
           <div class="tabs play">
             <button type="button" :class="{ active: tab === 'city' }" @click="tab = 'city'">城池</button>
             <button type="button" :class="{ active: tab === 'army' }" @click="tab = 'army'">军队</button>
@@ -917,20 +953,24 @@ async function submitLogout(): Promise<void> {
 
           <section v-if="tab === 'city' && overview" class="block">
             <h2>城内</h2>
-            <p class="res">
-              粮 {{ overview.resources.grain }} / 木 {{ overview.resources.wood }} / 铁 {{ overview.resources.iron }} / 铜
-              {{ overview.resources.copper }}
-              （上限 {{ overview.resourceCap }}，人口上限 {{ overview.populationCap }}）
-            </p>
-            <p v-if="queue" class="hint">
+            <p v-if="queue" class="queue-banner">
               建造中：{{ queueName(queue.buildingType) }} → {{ queue.targetLevel }} 级，剩余
               {{ remainText(queue.finishAt) }}
             </p>
-            <ul class="buildings">
-              <li v-for="item in overview.buildings" :key="item.type">
-                <div>
+            <ul class="cards">
+              <li
+                v-for="item in overview.buildings"
+                :key="item.type"
+                class="portrait-card"
+                :class="{ locked: Boolean(item.blockedReason), upgrading: item.status === 'upgrading' }"
+              >
+                <div class="portrait">
+                  <img :src="buildingPortrait(item.type)" :alt="item.name" />
+                  <span class="lv">{{ item.level }}/{{ item.maxLevel }}</span>
+                </div>
+                <div class="info">
                   <strong>{{ item.name }}</strong>
-                  <span class="meta">{{ item.level }} / {{ item.maxLevel }} 级</span>
+                  <div class="level-bar"><i :style="{ width: levelWidth(item.level, item.maxLevel) }"></i></div>
                   <span v-if="effectsText(item.effects)" class="hint">{{ effectsText(item.effects) }}</span>
                   <span v-if="item.status === 'upgrading'" class="hint">
                     升级中 {{ remainText(item.finishAt) }}
@@ -938,47 +978,66 @@ async function submitLogout(): Promise<void> {
                   <span v-else-if="blockedText(item.blockedReason)" class="hint">{{
                     blockedText(item.blockedReason)
                   }}</span>
-                  <p v-if="item.next" class="hint">{{ costText(item.next) }}</p>
+                  <div v-if="item.next" class="cost-row">
+                    <span v-for="part in costParts(item.next)" :key="part.key" class="cost-chip">
+                      <img :src="resourceArt[part.key]" :alt="resourceLabel[part.key]" />
+                      {{ part.amount }}
+                    </span>
+                    <span class="cost-chip time">{{ item.next.durationSeconds }}秒</span>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  :disabled="busy || item.status === 'upgrading' || Boolean(item.blockedReason)"
-                  @click="submitUpgrade(item.type)"
-                >
-                  {{ item.level === 0 ? "建造" : "升级" }}
-                </button>
+                <div class="card-actions">
+                  <button
+                    type="button"
+                    :disabled="busy || item.status === 'upgrading' || Boolean(item.blockedReason)"
+                    @click="submitUpgrade(item.type)"
+                  >
+                    {{ item.level === 0 ? "建造" : "升级" }}
+                  </button>
+                </div>
               </li>
             </ul>
           </section>
 
           <section v-if="tab === 'city' && fields" class="block">
             <h2>城外</h2>
-            <p class="res">
-              可收取：良田 {{ fields.fields.find((f) => f.type === "farm")?.pending ?? 0 }} 粮 / 木场
-              {{ fields.fields.find((f) => f.type === "lumber")?.pending ?? 0 }} 木 / 铁矿
-              {{ fields.fields.find((f) => f.type === "ironMine")?.pending ?? 0 }} 铁 / 铜矿
-              {{ fields.fields.find((f) => f.type === "copperMine")?.pending ?? 0 }} 铜
-            </p>
             <p class="hint">主殿生效 1 级后可建；产出按上次收取时间现算，点收取才入库。</p>
             <p>
               <button type="button" :disabled="busy" @click="submitCollect()">一键收取</button>
             </p>
-            <ul class="buildings">
-              <li v-for="item in fields.fields" :key="item.type">
-                <div>
+            <ul class="cards">
+              <li
+                v-for="item in fields.fields"
+                :key="item.type"
+                class="portrait-card"
+                :class="{ locked: Boolean(item.blockedReason), upgrading: item.status === 'upgrading' }"
+              >
+                <div class="portrait">
+                  <img :src="buildingPortrait(item.type)" :alt="item.name" />
+                  <span class="lv">{{ item.level }}/{{ item.maxLevel }}</span>
+                </div>
+                <div class="info">
                   <strong>{{ item.name }}</strong>
-                  <span class="meta">{{ item.level }} / {{ item.maxLevel }} 级</span>
-                  <span class="meta">{{ item.pending }} / {{ item.fieldCap }} {{ resourceLabel[item.resource] }}</span>
-                  <span v-if="item.level >= 1" class="hint"> {{ item.ratePerHour }}/时 </span>
+                  <div class="level-bar"><i :style="{ width: levelWidth(item.level, item.maxLevel) }"></i></div>
+                  <span v-if="item.level >= 1" class="hint">{{ item.ratePerHour }}/时</span>
+                  <span v-if="item.pending > 0" class="pending-chip">
+                    可收 {{ item.pending }} / {{ item.fieldCap }} {{ resourceLabel[item.resource] }}
+                  </span>
                   <span v-if="item.status === 'upgrading'" class="hint">
                     升级中 {{ remainText(item.finishAt) }}
                   </span>
                   <span v-else-if="blockedText(item.blockedReason)" class="hint">{{
                     blockedText(item.blockedReason)
                   }}</span>
-                  <p v-if="item.next" class="hint">{{ costText(item.next) }}</p>
+                  <div v-if="item.next" class="cost-row">
+                    <span v-for="part in costParts(item.next)" :key="part.key" class="cost-chip">
+                      <img :src="resourceArt[part.key]" :alt="resourceLabel[part.key]" />
+                      {{ part.amount }}
+                    </span>
+                    <span class="cost-chip time">{{ item.next.durationSeconds }}秒</span>
+                  </div>
                 </div>
-                <div class="actions">
+                <div class="card-actions">
                   <button type="button" :disabled="busy || item.level < 1" @click="submitCollect(item.type)">
                     收取
                   </button>
@@ -998,11 +1057,20 @@ async function submitLogout(): Promise<void> {
             <h2>城墙</h2>
             <p class="res">守城 {{ walls.wallDefense }} · 陷阱加成 {{ Math.round(walls.trapBonus * 100) }}%</p>
             <p class="hint">主殿 2 级可建箭塔 / 城门，3 级可建陷阱。与城内、城外共用一条建造队列。</p>
-            <ul class="buildings">
-              <li v-for="item in walls.walls" :key="item.type">
-                <div>
+            <ul class="cards">
+              <li
+                v-for="item in walls.walls"
+                :key="item.type"
+                class="portrait-card"
+                :class="{ locked: Boolean(item.blockedReason), upgrading: item.status === 'upgrading' }"
+              >
+                <div class="portrait">
+                  <img :src="buildingPortrait(item.type)" :alt="item.name" />
+                  <span class="lv">{{ item.level }}/{{ item.maxLevel }}</span>
+                </div>
+                <div class="info">
                   <strong>{{ item.name }}</strong>
-                  <span class="meta">{{ item.level }} / {{ item.maxLevel }} 级</span>
+                  <div class="level-bar"><i :style="{ width: levelWidth(item.level, item.maxLevel) }"></i></div>
                   <span v-if="effectsText(item.effects)" class="hint">{{ effectsText(item.effects) }}</span>
                   <span v-if="item.status === 'upgrading'" class="hint">
                     升级中 {{ remainText(item.finishAt) }}
@@ -1010,25 +1078,49 @@ async function submitLogout(): Promise<void> {
                   <span v-else-if="blockedText(item.blockedReason)" class="hint">{{
                     blockedText(item.blockedReason)
                   }}</span>
-                  <p v-if="item.next" class="hint">{{ costText(item.next) }}</p>
+                  <div v-if="item.next" class="cost-row">
+                    <span v-for="part in costParts(item.next)" :key="part.key" class="cost-chip">
+                      <img :src="resourceArt[part.key]" :alt="resourceLabel[part.key]" />
+                      {{ part.amount }}
+                    </span>
+                    <span class="cost-chip time">{{ item.next.durationSeconds }}秒</span>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  :disabled="busy || item.status === 'upgrading' || Boolean(item.blockedReason)"
-                  @click="submitWallUpgrade(item.type)"
-                >
-                  {{ item.level === 0 ? "建造" : "升级" }}
-                </button>
+                <div class="card-actions">
+                  <button
+                    type="button"
+                    :disabled="busy || item.status === 'upgrading' || Boolean(item.blockedReason)"
+                    @click="submitWallUpgrade(item.type)"
+                  >
+                    {{ item.level === 0 ? "建造" : "升级" }}
+                  </button>
+                </div>
               </li>
             </ul>
           </section>
 
           <section v-if="tab === 'army' && army" class="block">
             <h2>军队</h2>
-            <p class="res">
-              步 {{ army.troops.infantry }} / 弓 {{ army.troops.archer }} / 骑 {{ army.troops.cavalry }} （上限
-              {{ army.troopCap }}，兵营 {{ army.barracksLevel }} 级，城防 {{ army.wallDefense }}
-              <template v-if="army.troopPowerBonusPercent">，兵力战力+{{ army.troopPowerBonusPercent }}%</template>）
+            <div class="troop-row">
+              <div class="troop-card">
+                <img :src="troopPortrait('infantry')" alt="步兵" />
+                <strong>步兵</strong>
+                <b>{{ army.troops.infantry }}</b>
+              </div>
+              <div class="troop-card">
+                <img :src="troopPortrait('archer')" alt="弓兵" />
+                <strong>弓兵</strong>
+                <b>{{ army.troops.archer }}</b>
+              </div>
+              <div class="troop-card">
+                <img :src="troopPortrait('cavalry')" alt="骑兵" />
+                <strong>骑兵</strong>
+                <b>{{ army.troops.cavalry }}</b>
+              </div>
+            </div>
+            <p class="hint">
+              带兵上限 {{ army.troopCap }} · 兵营 {{ army.barracksLevel }} 级 · 城防 {{ army.wallDefense }}
+              <template v-if="army.troopPowerBonusPercent"> · 兵力战力+{{ army.troopPowerBonusPercent }}%</template>
             </p>
             <div class="form inline">
               <label>
@@ -1045,7 +1137,15 @@ async function submitLogout(): Promise<void> {
               </label>
               <button type="button" :disabled="busy" @click="submitRecruit">征兵</button>
             </div>
-            <p class="hint">{{ recruitCostText || "步兵需兵营 1 级，弓兵 2 级，骑兵 3 级。征兵即时扣资源。" }}</p>
+            <div v-if="selectedTroop" class="cost-row">
+              <span v-for="key in resourceKeys" :key="key" class="cost-chip">
+                <img :src="resourceArt[key]" :alt="resourceLabel[key]" />
+                {{ selectedTroop.unitCost[key] * Math.max(0, Number(recruitCount) || 0) }}
+              </span>
+              <span class="cost-chip time">兵营 ≥ {{ selectedTroop.requireBarracksLevel }}</span>
+              <span v-if="army.recruitDiscountPercent" class="hint">征兵减免 {{ army.recruitDiscountPercent }}%</span>
+            </div>
+            <p v-else class="hint">步兵需兵营 1 级，弓兵 2 级，骑兵 3 级。征兵即时扣资源。</p>
             <h3>出征</h3>
             <p class="hint">{{ selected ? `目标：${selected.label}` : "在地图点选据点或其他玩家城" }}</p>
             <div class="form inline">
@@ -1067,19 +1167,21 @@ async function submitLogout(): Promise<void> {
 
           <section v-if="tab === 'map' && world" class="block">
             <h2>大地图</h2>
-            <p class="hint">拖拽移动，滚轮缩放。金点自己，红点 AI，绿点玩家，方块为常驻据点，菱形为限时流寇，三角为市集。点击据点/玩家城出征，点击市集兑换。</p>
+            <div class="legend">
+              <span><img src="/art/marker-city.jpg" alt="" />城池（金圈自己 / 红圈 AI / 绿圈玩家）</span>
+              <span><img src="/art/marker-outpost.jpg" alt="" />常驻据点</span>
+              <span><img src="/art/marker-roaming.jpg" alt="" />限时流寇</span>
+              <span><img src="/art/marker-market.jpg" alt="" />市集</span>
+            </div>
+            <p class="hint">拖拽移动，滚轮缩放。点击据点或玩家城出征，点击市集兑换。</p>
             <WorldMap :world="world" @select="onSelectTarget" />
           </section>
 
           <section v-if="tab === 'market' && markets" class="block">
             <h2>市集</h2>
-            <p class="res">
-              粮 {{ markets.resources.grain }} / 木 {{ markets.resources.wood }} / 铁 {{ markets.resources.iron }} / 铜
-              {{ markets.resources.copper }}
-              （仓库上限 {{ markets.resourceCap }}，单次运量 {{ markets.cargoCap }}）
-            </p>
             <p class="hint">
-              税率 {{ Math.round(markets.taxRate * 100) }}%，最少付出 {{ markets.minAmount }}。出发立刻扣资源，往返到点后入仓。
+              单次运量 {{ markets.cargoCap }} · 税率 {{ Math.round(markets.taxRate * 100) }}% · 最少付出
+              {{ markets.minAmount }}。出发立刻扣资源，往返到点后入仓。
             </p>
             <div class="form inline">
               <label>
@@ -1156,7 +1258,7 @@ async function submitLogout(): Promise<void> {
             <ul class="buildings">
               <li v-for="item in reports?.items ?? []" :key="item.id">
                 <div>
-                  <strong>{{ item.attackerWon ? "胜" : "负" }}</strong>
+                  <strong :class="item.attackerWon ? 'protect' : 'lose'">{{ item.attackerWon ? "胜" : "负" }}</strong>
                   <span class="meta">{{ item.summary }}</span>
                   <p class="hint">
                     攻 {{ troopLabel.infantry }}{{ item.attackerBefore.infantry }}→{{ item.attackerAfter.infantry }} /

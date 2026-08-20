@@ -52,7 +52,8 @@ public sealed record AllianceMemberDto(
     long CharacterId,
     string Name,
     AllianceRole Role,
-    DateTime JoinedAt);
+    DateTime JoinedAt,
+    long CityId);
 
 public sealed record AllianceSummaryDto(
     long Id,

@@ -19,9 +19,9 @@
 
 | 项 | 值 |
 |----|----|
-| 已完成 | 第 0～9 步；第一版数值已按联调缩短时长、加大田产出 |
+| 已完成 | 第 0～10 步；第一版数值已按联调缩短时长、加大田产出 |
 | 正在做 / 下一步 | 实机联调验收（按手感再调） |
-| 立刻要写的文档 | 第一版设计均已定稿 |
+| 立刻要写的文档 | 第 10 步设计已定稿 |
 
 ## 总览
 
@@ -37,6 +37,7 @@
 | 7 | AI 玩家 | [AI](design-ai.md) | Hangfire AI tick | **已完成** |
 | 8 | 大地图表现 | [前后端通讯](design-frontend-comm.md)、[大地图](design-world-map.md) | Canvas 地图 | **已完成** |
 | 9 | 邮件、排行、联盟 | [邮件](design-mail.md)、[排行](design-ranking.md)、[联盟](design-alliance.md) | 同联盟免战 | **已完成** |
+| 10 | 市集兑换与同盟运输 | [市集](design-market.md) | NPC 市集点、`sg_transport`、`TransportArrived` | **已完成** |
 
 网页端：第 1 步末搭最小 Vue（登录 + 我的城）；城内界面跟第 2 步；出征面板跟第 5 步；大地图画布放第 8 步。不要第 0 步先做空前端。
 
@@ -333,6 +334,41 @@
 
 ---
 
+## 第 10 步：市集兑换与同盟运输
+
+**目标：** 能在地图市集按比例换资源；同联盟能互相运资源；两者都按行军公式花时间。
+
+### 先定稿
+
+- [design-market.md](design-market.md)：市集占格、汇率、双程/单程计时、运输表、API 与错误码
+
+### 本步接入
+
+- 启动补齐 NPC 市集点
+- 表 `sg_transport`；Hangfire 按 `ArriveAt` 结算
+- SignalR `TransportArrived` / `ResourceReceived`
+
+### 做
+
+- `GET` 市集列表与汇率；`POST` 兑换立刻扣付出资源并返回 `arriveAt`
+- 到点按锁定换得量入仓（仓库截断）
+- 同联盟 `POST` 援助：立刻扣发送方，到点入接收方
+- Vue：市集页、地图市集标记与运输线
+
+### 不做
+
+- 玩家挂单、押运兵力、取消/加速、途中被劫、城内市集建筑、AI 交易
+
+### 验收
+
+- 1000 粮换木：立刻粮 -1000，到点木 +900
+- 同种兑换 / 数量过小 → `40928`
+- 组盟后援助成功；非同盟 `40926`；运给自己 `40925`
+- 途中退盟仍送达
+- 地图能看到市集与运输线
+
+---
+
 ## 明确不做（第一版全程）
 
 - 全图实时视野、帧同步、即时 RTS
@@ -351,3 +387,4 @@
 | 库、Redis、Hangfire | 本文各步「首次接入」 | `SanguoGame.Infrastructure` |
 | HTTP / Hub | `design-realtime.md` | `SanguoGame.Server` Controllers、Hubs |
 | 网页 | `design-frontend-comm.md` | `web/`（第 1 步末创建） |
+| 市集 / 运输 | `design-market.md` | `SanguoGame.Core` 汇率；`sg_market` / `sg_transport`；`MarketsController` |

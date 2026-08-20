@@ -1,5 +1,6 @@
 using SanguoGame.Core.Army;
 using SanguoGame.Core.Buildings;
+using SanguoGame.Core.Market;
 using SanguoGame.Core.World;
 using Xunit;
 
@@ -136,6 +137,35 @@ public class CatalogPlaytestNumbersTests
         Assert.NotNull(farm);
         Assert.Equal(600, farm.RatePerHour(1));
         Assert.Equal(1500, farm.FieldCap(1));
+    }
+}
+
+public class MarketCatalogTests
+{
+    [Fact]
+    public void ThousandGrainToWood_IsNineHundred()
+    {
+        Assert.Equal(900, MarketCatalog.Quote("grain", "wood", 1000));
+    }
+
+    [Fact]
+    public void ThousandGrainToIron_IsSixHundred()
+    {
+        Assert.Equal(600, MarketCatalog.Quote("grain", "iron", 1000));
+    }
+
+    [Fact]
+    public void SameResourceOrTooSmall_IsZero()
+    {
+        Assert.Equal(0, MarketCatalog.Quote("grain", "grain", 1000));
+        Assert.Equal(0, MarketCatalog.Quote("grain", "wood", 99));
+    }
+
+    [Fact]
+    public void CargoCap_GrowsWithWarehouse()
+    {
+        Assert.Equal(2000, MarketCatalog.CargoCap(0));
+        Assert.Equal(3000, MarketCatalog.CargoCap(1));
     }
 }
 

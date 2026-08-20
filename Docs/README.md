@@ -30,3 +30,4 @@
 | [design-mail.md](design-mail.md) | 站内信与战报 / 联盟通知 | 已定稿 |
 | [design-ranking.md](design-ranking.md) | 国力 / 兵力 / 掠夺排行 | 已定稿 |
 | [design-alliance.md](design-alliance.md) | 联盟与同联盟免战 | 已定稿 |
+| [design-market.md](design-market.md) | 市集兑换与同盟运输 | 已定稿 |

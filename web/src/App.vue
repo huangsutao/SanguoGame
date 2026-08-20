@@ -36,7 +36,10 @@ import {
   leaveAlliance,
   dissolveAlliance,
   kickAllianceMember,
-  updateAllianceNotice
+  updateAllianceNotice,
+  fetchMarkets,
+  tradeMarket,
+  aidMarket
 } from "./api/game";
 import { createGameHub } from "./api/hub";
 import { ApiError } from "./api/types";
@@ -56,7 +59,8 @@ import type {
   AllianceDetailDto,
   AlliancePendingDto,
   AllianceSummaryDto,
-  BuildingCostDto
+  BuildingCostDto,
+  MarketsOverviewDto
 } from "./api/types";
 import { clearTokens, getAccessToken, getRefreshToken, saveTokens, setUnauthorizedHandler } from "./session";
 import type { HubConnection } from "@microsoft/signalr";
@@ -67,7 +71,7 @@ const busy = ref(false);
 const error = ref("");
 const notice = ref("");
 const mode = ref<"login" | "register">("login");
-const tab = ref<"city" | "army" | "map" | "reports" | "mail" | "ranks" | "alliance">("city");
+const tab = ref<"city" | "army" | "map" | "reports" | "mail" | "ranks" | "alliance" | "market">("city");
 const session = ref<SessionResponse | null>(null);
 const overview = ref<BuildingsOverviewDto | null>(null);
 const fields = ref<FieldsOverviewDto | null>(null);
@@ -92,6 +96,16 @@ const recruitCount = ref(10);
 const marchInf = ref(20);
 const marchArc = ref(0);
 const marchCav = ref(0);
+const markets = ref<MarketsOverviewDto | null>(null);
+const selectedMarketId = ref<number | null>(null);
+const tradeFrom = ref("grain");
+const tradeTo = ref("wood");
+const tradeAmount = ref(1000);
+const aidCityId = ref<number | null>(null);
+const aidGrain = ref(200);
+const aidWood = ref(0);
+const aidIron = ref(0);
+const aidCopper = ref(0);
 
 const username = ref("");
 const password = ref("");
@@ -115,6 +129,29 @@ const recruitCostText = computed(() => {
   const c = def.unitCost;
   return `消耗 粮${c.grain * n} 木${c.wood * n} 铁${c.iron * n} 铜${c.copper * n}（兵营 ≥ ${def.requireBarracksLevel}）`;
 });
+
+const selectedMarket = computed(() =>
+  markets.value?.markets.find((item) => item.id === selectedMarketId.value) ?? null
+);
+
+const tradePreview = computed(() => {
+  const amount = Math.max(0, Number(tradeAmount.value) || 0);
+  const rate = markets.value?.rates.find(
+    (item) => item.fromResource === tradeFrom.value && item.toResource === tradeTo.value
+  );
+  if (!rate || amount <= 0) {
+    return "";
+  }
+  const got = Math.floor((amount * rate.toAmount) / rate.fromAmount);
+  const trip = selectedMarket.value ? `${selectedMarket.value.roundTripSeconds}秒往返` : "先选市集";
+  return `付出 ${resourceLabel[tradeFrom.value]}${amount} → 换得 ${resourceLabel[tradeTo.value]}${got}（${trip}）`;
+});
+
+const aidMembers = computed(() =>
+  (alliance.value?.members ?? []).filter(
+    (item) => item.characterId !== session.value?.character?.id && item.cityId > 0
+  )
+);
 
 const resourceLabel: Record<string, string> = {
   grain: "粮",
@@ -217,6 +254,13 @@ async function loadWorld(): Promise<void> {
   world.value = await fetchWorld();
 }
 
+async function loadMarkets(): Promise<void> {
+  markets.value = await fetchMarkets();
+  if (selectedMarketId.value == null && markets.value.markets.length > 0) {
+    selectedMarketId.value = markets.value.markets[0].id;
+  }
+}
+
 async function loadReports(page = 1, append = false): Promise<void> {
   const data = await fetchReports(page);
   reports.value = append && reports.value
@@ -265,7 +309,16 @@ async function loadAlliance(): Promise<void> {
 }
 
 async function loadAll(): Promise<void> {
-  await Promise.all([loadCity(), loadArmy(), loadWorld(), loadReports(), loadMail(), loadRankings(), loadAlliance()]);
+  await Promise.all([
+    loadCity(),
+    loadArmy(),
+    loadWorld(),
+    loadReports(),
+    loadMail(),
+    loadRankings(),
+    loadAlliance(),
+    loadMarkets()
+  ]);
 }
 
 async function connectHub(): Promise<void> {
@@ -281,6 +334,14 @@ async function connectHub(): Promise<void> {
     void loadAll();
     notice.value = "本城遭到攻击";
   });
+  hub.on("TransportArrived", () => {
+    void loadAll();
+    notice.value = "运输已到达";
+  });
+  hub.on("ResourceReceived", () => {
+    void loadAll();
+    notice.value = "收到同盟资源";
+  });
   hub.onreconnected(() => {
     void loadAll();
   });
@@ -292,6 +353,8 @@ async function disconnectHub(): Promise<void> {
     hub.off("BuildComplete");
     hub.off("MarchArrived");
     hub.off("CityAttacked");
+    hub.off("TransportArrived");
+    hub.off("ResourceReceived");
     await hub.stop();
     hub = null;
   }
@@ -311,6 +374,7 @@ onMounted(async () => {
     alliance.value = null;
     allianceList.value = null;
     alliancePending.value = null;
+    markets.value = null;
     void disconnectHub();
   });
 
@@ -354,6 +418,7 @@ watch(hasCity, async (ready) => {
     alliance.value = null;
     allianceList.value = null;
     alliancePending.value = null;
+    markets.value = null;
     await disconnectHub();
     return;
   }
@@ -540,9 +605,50 @@ async function submitMarch(): Promise<void> {
 }
 
 function onSelectTarget(target: MarchTarget): void {
+  if (target.targetType === "market") {
+    selectedMarketId.value = target.targetId;
+    tab.value = "market";
+    notice.value = `已选择 ${target.label}`;
+    return;
+  }
   selected.value = target;
   tab.value = "army";
   notice.value = `已选择 ${target.label}`;
+}
+
+async function submitTrade(): Promise<void> {
+  if (selectedMarketId.value == null) {
+    error.value = "请先选择市集";
+    return;
+  }
+  await run(async () => {
+    markets.value = await tradeMarket(
+      selectedMarketId.value!,
+      tradeFrom.value,
+      tradeTo.value,
+      Math.max(0, Number(tradeAmount.value) || 0)
+    );
+    await Promise.all([loadCity(), loadWorld(), loadMail()]);
+    notice.value = "已出发前往市集";
+  });
+}
+
+async function submitAid(): Promise<void> {
+  if (aidCityId.value == null) {
+    error.value = "请选择同盟成员";
+    return;
+  }
+  await run(async () => {
+    markets.value = await aidMarket(
+      aidCityId.value!,
+      Math.max(0, Number(aidGrain.value) || 0),
+      Math.max(0, Number(aidWood.value) || 0),
+      Math.max(0, Number(aidIron.value) || 0),
+      Math.max(0, Number(aidCopper.value) || 0)
+    );
+    await Promise.all([loadCity(), loadWorld(), loadMail(), loadAlliance()]);
+    notice.value = "资源运输已出发";
+  });
 }
 
 async function run(action: () => Promise<void>): Promise<void> {
@@ -761,6 +867,7 @@ async function submitLogout(): Promise<void> {
             <button type="button" :class="{ active: tab === 'city' }" @click="tab = 'city'">城池</button>
             <button type="button" :class="{ active: tab === 'army' }" @click="tab = 'army'">军队</button>
             <button type="button" :class="{ active: tab === 'map' }" @click="tab = 'map'">地图</button>
+            <button type="button" :class="{ active: tab === 'market' }" @click="tab = 'market'">市集</button>
             <button type="button" :class="{ active: tab === 'reports' }" @click="tab = 'reports'">战报</button>
             <button type="button" :class="{ active: tab === 'mail' }" @click="tab = 'mail'">
               邮件{{ mail?.unreadCount ? ` ${mail.unreadCount}` : "" }}
@@ -918,8 +1025,87 @@ async function submitLogout(): Promise<void> {
 
           <section v-if="tab === 'map' && world" class="block">
             <h2>大地图</h2>
-            <p class="hint">拖拽移动，滚轮缩放。金点自己，红点 AI，绿点玩家，方块为 NPC 据点。点击可选作出征目标。</p>
+            <p class="hint">拖拽移动，滚轮缩放。金点自己，红点 AI，绿点玩家，方块为 NPC 据点，三角为市集。点击据点/玩家城出征，点击市集兑换。</p>
             <WorldMap :world="world" @select="onSelectTarget" />
+          </section>
+
+          <section v-if="tab === 'market' && markets" class="block">
+            <h2>市集</h2>
+            <p class="res">
+              粮 {{ markets.resources.grain }} / 木 {{ markets.resources.wood }} / 铁 {{ markets.resources.iron }} / 铜
+              {{ markets.resources.copper }}
+              （仓库上限 {{ markets.resourceCap }}，单次运量 {{ markets.cargoCap }}）
+            </p>
+            <p class="hint">
+              税率 {{ Math.round(markets.taxRate * 100) }}%，最少付出 {{ markets.minAmount }}。出发立刻扣资源，往返到点后入仓。
+            </p>
+            <div class="form inline">
+              <label>
+                市集
+                <select v-model.number="selectedMarketId">
+                  <option v-for="item in markets.markets" :key="item.id" :value="item.id">
+                    {{ item.name }}（往返 {{ item.roundTripSeconds }}秒）
+                  </option>
+                </select>
+              </label>
+              <label>
+                付出
+                <select v-model="tradeFrom">
+                  <option value="grain">粮</option>
+                  <option value="wood">木</option>
+                  <option value="iron">铁</option>
+                  <option value="copper">铜</option>
+                </select>
+              </label>
+              <label>
+                换得
+                <select v-model="tradeTo">
+                  <option value="grain">粮</option>
+                  <option value="wood">木</option>
+                  <option value="iron">铁</option>
+                  <option value="copper">铜</option>
+                </select>
+              </label>
+              <label>
+                数量
+                <input v-model.number="tradeAmount" type="number" min="100" />
+              </label>
+              <button type="button" :disabled="busy || !selectedMarketId" @click="submitTrade">兑换</button>
+            </div>
+            <p class="hint">{{ tradePreview }}</p>
+            <h3>同盟运输</h3>
+            <p v-if="!aidMembers.length" class="hint">加入联盟后可把资源运给其他成员，单程计时，途中退盟仍会送达。</p>
+            <div v-else class="form inline">
+              <label>
+                成员
+                <select v-model.number="aidCityId">
+                  <option :value="null">选择成员</option>
+                  <option v-for="item in aidMembers" :key="item.cityId" :value="item.cityId">
+                    {{ item.name }}
+                  </option>
+                </select>
+              </label>
+              <label>粮 <input v-model.number="aidGrain" type="number" min="0" /></label>
+              <label>木 <input v-model.number="aidWood" type="number" min="0" /></label>
+              <label>铁 <input v-model.number="aidIron" type="number" min="0" /></label>
+              <label>铜 <input v-model.number="aidCopper" type="number" min="0" /></label>
+              <button type="button" :disabled="busy || aidCityId == null" @click="submitAid">运输</button>
+            </div>
+            <h3>在途</h3>
+            <p v-if="!markets.transports.length" class="hint">没有在途运输</p>
+            <ul class="buildings">
+              <li v-for="item in markets.transports" :key="item.id">
+                <div>
+                  <strong>{{ item.kind === "market" ? "市集兑换" : "同盟运输" }} #{{ item.id }}</strong>
+                  <span class="meta">{{ item.fromX }},{{ item.fromY }} → {{ item.toX }},{{ item.toY }}</span>
+                  <span class="hint">{{ remainText(item.arriveAt) }}</span>
+                  <p class="hint">
+                    货 粮{{ item.cargo.grain }} 木{{ item.cargo.wood }} 铁{{ item.cargo.iron }} 铜{{ item.cargo.copper }}
+                    → 入账 粮{{ item.credit.grain }} 木{{ item.credit.wood }} 铁{{ item.credit.iron }} 铜{{ item.credit.copper }}
+                  </p>
+                </div>
+              </li>
+            </ul>
           </section>
 
           <section v-if="tab === 'reports'" class="block">

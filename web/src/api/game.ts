@@ -17,7 +17,8 @@ import type {
   RankingType,
   AllianceDetailDto,
   AlliancePendingDto,
-  AllianceSummaryDto
+  AllianceSummaryDto,
+  MarketsOverviewDto
 } from "./types";
 
 export function register(username: string, password: string): Promise<TokenResponse> {
@@ -171,4 +172,38 @@ export function kickAllianceMember(characterId: number): Promise<unknown> {
 
 export function updateAllianceNotice(notice: string): Promise<unknown> {
   return request("post", "/api/alliances/notice", { notice });
+}
+
+export function fetchMarkets(): Promise<MarketsOverviewDto> {
+  return request<MarketsOverviewDto>("get", "/api/markets");
+}
+
+export function tradeMarket(
+  marketId: number,
+  fromResource: string,
+  toResource: string,
+  amount: number
+): Promise<MarketsOverviewDto> {
+  return request<MarketsOverviewDto>("post", "/api/markets/trade", {
+    marketId,
+    fromResource,
+    toResource,
+    amount
+  });
+}
+
+export function aidMarket(
+  targetCityId: number,
+  grain: number,
+  wood: number,
+  iron: number,
+  copper: number
+): Promise<MarketsOverviewDto> {
+  return request<MarketsOverviewDto>("post", "/api/markets/aid", {
+    targetCityId,
+    grain,
+    wood,
+    iron,
+    copper
+  });
 }

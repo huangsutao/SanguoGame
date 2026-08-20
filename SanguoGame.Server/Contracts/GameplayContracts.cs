@@ -123,4 +123,6 @@ public sealed record WorldDto(
     WorldOriginDto Origin,
     IReadOnlyList<WorldCityDto> Cities,
     IReadOnlyList<WorldOutpostDto> Outposts,
-    IReadOnlyList<MarchDto> Marches);
+    IReadOnlyList<MarchDto> Marches,
+    IReadOnlyList<WorldMarketDto> Markets,
+    IReadOnlyList<TransportDto> Transports);

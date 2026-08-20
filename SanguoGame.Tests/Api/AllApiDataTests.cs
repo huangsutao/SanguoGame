@@ -2,6 +2,7 @@ using System.Net;
 using SanguoGame.Core;
 using SanguoGame.Core.Army;
 using SanguoGame.Core.Buildings;
+using SanguoGame.Core.Market;
 using SanguoGame.Core.Social;
 using SanguoGame.Server.Contracts;
 using Xunit;
@@ -557,6 +558,53 @@ public sealed class AllApiDataTests
         Assert.Equal(ErrorCodes.ValidationFailed, bad.Code);
         var (_, mailBad) = await api.Get<MailListDto>("/api/mail?page=1&pageSize=0");
         Assert.Equal(ErrorCodes.ValidationFailed, mailBad.Code);
+    }
+
+    [SkippableFact]
+    public async Task Markets_Rates_Trade_And_WorldTransport()
+    {
+        SkipIfUnavailable();
+        var api = new ApiClient(_factory.CreateJsonClient());
+        var player = await api.RegisterPlayerAsync("mk");
+        var (_, overview) = await api.Get<MarketsOverviewDto>("/api/markets");
+        Assert.Equal(0, overview.Code);
+        Assert.Equal(player.CityId, overview.Data?.CityId);
+        Assert.Equal(2000, overview.Data?.CargoCap);
+        Assert.Equal(0.1, overview.Data?.TaxRate);
+        Assert.Equal(100, overview.Data?.MinAmount);
+        Assert.Equal(10, overview.Data?.Values.Grain);
+        Assert.Equal(12, overview.Data?.Rates.Count);
+        Assert.Contains(overview.Data!.Rates, r => r.FromResource == "grain" && r.ToResource == "wood" && r.ToAmount == 90);
+        Assert.DoesNotContain(overview.Data.Transports, t => t.FromCityId == player.CityId);
+
+        var (mx, my) = await _factory.PickEmptyCellAsync(player.X, player.Y);
+        var marketId = await _factory.InsertMarketAsync(mx, my);
+        var (_, listed) = await api.Get<MarketsOverviewDto>("/api/markets");
+        var market = Assert.Single(listed.Data!.Markets, m => m.Id == marketId);
+        Assert.Equal(mx, market.X);
+        Assert.Equal(my, market.Y);
+        Assert.Equal(market.DurationSeconds * 2, market.RoundTripSeconds);
+
+        var (_, traded) = await api.Post<MarketsOverviewDto>("/api/markets/trade", new
+        {
+            marketId,
+            fromResource = "iron",
+            toResource = "copper",
+            amount = 150
+        });
+        Assert.Equal(0, traded.Code);
+        Assert.Equal(1850, traded.Data?.Resources.Iron);
+        var cart = Assert.Single(traded.Data!.Transports, t => t.FromCityId == player.CityId);
+        Assert.Equal(TransportKind.Market, cart.Kind);
+        Assert.Equal(101, cart.Credit.Copper);
+
+        var (_, world) = await api.Get<WorldDto>("/api/world");
+        Assert.Contains(world.Data!.Markets, m => m.Id == marketId && m.Name.Contains("市集"));
+        var seen = world.Data.Transports.Single(m => m.Id == cart.Id);
+        Assert.True(seen.Mine);
+        Assert.Equal(cart.Id, seen.Id);
+        Assert.Equal(player.X, seen.FromX);
+        Assert.Equal(mx, seen.ToX);
     }
 
     private async Task UpgradeAndFinish(ApiClient api, string buildingType)

@@ -4,7 +4,7 @@ import type { WorldDto } from "./api/types";
 
 const props = defineProps<{ world: WorldDto }>();
 const emit = defineEmits<{
-  select: [target: { targetType: "outpost" | "city"; targetId: number; label: string }];
+  select: [target: { targetType: "outpost" | "city" | "market"; targetId: number; label: string }];
 }>();
 
 const canvas = ref<HTMLCanvasElement | null>(null);
@@ -64,31 +64,85 @@ function draw(): void {
 
   const now = Date.now();
   ctx.lineWidth = 2;
-  for (const item of props.world.marches) {
-    const t = Math.min(
+  const drawPath = (
+    fromX: number,
+    fromY: number,
+    toX: number,
+    toY: number,
+    departAt: string,
+    arriveAt: string,
+    mine: boolean,
+    roundTrip: boolean,
+    stroke: string,
+    fill: string
+  ) => {
+    let t = Math.min(
       1,
-      Math.max(0, (now - Date.parse(item.departAt)) / Math.max(1, Date.parse(item.arriveAt) - Date.parse(item.departAt)))
+      Math.max(0, (now - Date.parse(departAt)) / Math.max(1, Date.parse(arriveAt) - Date.parse(departAt)))
     );
-    const ax = item.fromX + (item.toX - item.fromX) * t;
-    const ay = item.fromY + (item.toY - item.fromY) * t;
-    const from = toScreen(item.fromX, item.fromY);
-    const to = toScreen(item.toX, item.toY);
+    let ax: number;
+    let ay: number;
+    if (roundTrip) {
+      if (t < 0.5) {
+        const u = t * 2;
+        ax = fromX + (toX - fromX) * u;
+        ay = fromY + (toY - fromY) * u;
+      } else {
+        const u = (t - 0.5) * 2;
+        ax = toX + (fromX - toX) * u;
+        ay = toY + (fromY - toY) * u;
+      }
+    } else {
+      ax = fromX + (toX - fromX) * t;
+      ay = fromY + (toY - fromY) * t;
+    }
+    const from = toScreen(fromX, fromY);
+    const to = toScreen(toX, toY);
     const cur = toScreen(ax, ay);
-    ctx.strokeStyle = item.mine ? "#d4b46a" : "#6a7a8a";
+    ctx.strokeStyle = mine ? stroke : "#6a7a8a";
     ctx.beginPath();
     ctx.moveTo(from.sx, from.sy);
     ctx.lineTo(to.sx, to.sy);
     ctx.stroke();
-    ctx.fillStyle = item.mine ? "#e8c97a" : "#8aa0b4";
+    ctx.fillStyle = mine ? fill : "#8aa0b4";
     ctx.beginPath();
     ctx.arc(cur.sx, cur.sy, 3, 0, Math.PI * 2);
     ctx.fill();
+  };
+
+  for (const item of props.world.marches) {
+    drawPath(item.fromX, item.fromY, item.toX, item.toY, item.departAt, item.arriveAt, item.mine, false, "#d4b46a", "#e8c97a");
+  }
+  for (const item of props.world.transports ?? []) {
+    drawPath(
+      item.fromX,
+      item.fromY,
+      item.toX,
+      item.toY,
+      item.departAt,
+      item.arriveAt,
+      item.mine,
+      item.kind === "market",
+      "#6bc4a8",
+      "#8ee0c4"
+    );
   }
 
   for (const item of props.world.outposts) {
     const p = toScreen(item.x, item.y);
     ctx.fillStyle = item.garrison > 0 ? "#6b5b3a" : "#3a342a";
     ctx.fillRect(p.sx - 4, p.sy - 4, 8, 8);
+  }
+
+  for (const item of props.world.markets ?? []) {
+    const p = toScreen(item.x, item.y);
+    ctx.fillStyle = "#c47a3a";
+    ctx.beginPath();
+    ctx.moveTo(p.sx, p.sy - 6);
+    ctx.lineTo(p.sx + 5, p.sy + 4);
+    ctx.lineTo(p.sx - 5, p.sy + 4);
+    ctx.closePath();
+    ctx.fill();
   }
 
   for (const item of props.world.cities) {
@@ -112,8 +166,14 @@ function hit(clientX: number, clientY: number): void {
   const rect = el.getBoundingClientRect();
   const x = originX.value + (clientX - rect.left - el.width / 2) / scale.value;
   const y = originY.value + (clientY - rect.top - el.height / 2) / scale.value;
-  let best: { targetType: "outpost" | "city"; targetId: number; label: string; d: number } | null = null;
-  const consider = (targetType: "outpost" | "city", targetId: number, label: string, px: number, py: number) => {
+  let best: { targetType: "outpost" | "city" | "market"; targetId: number; label: string; d: number } | null = null;
+  const consider = (
+    targetType: "outpost" | "city" | "market",
+    targetId: number,
+    label: string,
+    px: number,
+    py: number
+  ) => {
     const d = Math.hypot(px - x, py - y);
     if (d <= 1.2 && (!best || d < best.d)) {
       best = { targetType, targetId, label, d };
@@ -127,6 +187,9 @@ function hit(clientX: number, clientY: number): void {
   }
   for (const item of props.world.outposts) {
     consider("outpost", item.id, `${item.name}`, item.x, item.y);
+  }
+  for (const item of props.world.markets ?? []) {
+    consider("market", item.id, item.name, item.x, item.y);
   }
   if (best) {
     emit("select", { targetType: best.targetType, targetId: best.targetId, label: best.label });

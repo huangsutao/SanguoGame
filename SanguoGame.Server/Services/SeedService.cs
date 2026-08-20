@@ -37,6 +37,7 @@ public sealed class SeedService
         try
         {
             await EnsureOutpostsAsync(cancellationToken);
+            await EnsureMarketsAsync(cancellationToken);
             await EnsureAiAsync(cancellationToken);
         }
         finally
@@ -75,6 +76,42 @@ public sealed class SeedService
                     X = cell.Value.X,
                     Y = cell.Value.Y,
                     Garrison = def.Garrison
+                }).ExecuteAffrowsAsync(cancellationToken);
+                existing++;
+            }
+            catch (Exception ex) when (DbErrors.IsUniqueViolation(ex))
+            {
+            }
+        }
+    }
+
+    private async Task EnsureMarketsAsync(CancellationToken cancellationToken)
+    {
+        var existing = (int)await _orm.Select<MarketEntity>().CountAsync(cancellationToken);
+        var attempts = 0;
+        var maxAttempts = Math.Max(_map.MarketCount * 4, 8);
+        while (existing < _map.MarketCount && attempts < maxAttempts)
+        {
+            attempts++;
+            var cell = await MapPlacement.TryPickEmptyCellAsync(
+                _map.Width,
+                _map.Height,
+                _map.PlacementMaxAttempts,
+                (x, y, ct) => WorldOccupancy.IsOccupiedAsync(_orm, x, y, ct),
+                cancellationToken);
+            if (cell is null)
+            {
+                _logger.LogWarning("市集空地不足，已生成 {Count} 座", existing);
+                break;
+            }
+
+            try
+            {
+                await _orm.Insert(new MarketEntity
+                {
+                    Name = $"市集·{cell.Value.X},{cell.Value.Y}",
+                    X = cell.Value.X,
+                    Y = cell.Value.Y
                 }).ExecuteAffrowsAsync(cancellationToken);
                 existing++;
             }

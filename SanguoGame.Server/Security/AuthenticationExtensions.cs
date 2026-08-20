@@ -107,6 +107,7 @@ internal static class AuthenticationExtensions
         services.AddScoped<MailService>();
         services.AddScoped<RankingService>();
         services.AddScoped<AllianceService>();
+        services.AddScoped<TransportService>();
         return services;
     }
 

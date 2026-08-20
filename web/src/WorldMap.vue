@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from "vue";
+import { onMounted, onUnmounted, ref, watch } from "vue";
 import type { WorldDto } from "./api/types";
 import { markerArt } from "./art";
 
-const props = defineProps<{ world: WorldDto }>();
+const props = withDefaults(
+  defineProps<{ world: WorldDto; active?: boolean }>(),
+  { active: true }
+);
 const emit = defineEmits<{
   select: [target: { targetType: "outpost" | "city" | "market"; targetId: number; label: string }];
 }>();
@@ -18,6 +21,8 @@ let lastY = 0;
 let startX = 0;
 let startY = 0;
 let raf = 0;
+let snapshotAt = Date.now();
+let snapshotServer = Date.parse(props.world.serverTime);
 
 const sprites = {
   city: loadSprite(markerArt.city),
@@ -32,11 +37,25 @@ const sprites = {
 function loadSprite(src: string): HTMLImageElement {
   const img = new Image();
   img.src = src;
+  img.onload = () => draw();
   return img;
 }
 
 function ready(img: HTMLImageElement): boolean {
   return img.complete && img.naturalWidth > 0;
+}
+
+function serverNow(): number {
+  const parsed = Number.isFinite(snapshotServer) ? snapshotServer : Date.now();
+  return parsed + (Date.now() - snapshotAt);
+}
+
+function markSize(): number {
+  return Math.max(16, Math.min(34, scale.value * 2.4));
+}
+
+function hitRadius(): number {
+  return Math.max(1.4, (markSize() / 2 + 10) / scale.value);
 }
 
 function drawSprite(ctx: CanvasRenderingContext2D, img: HTMLImageElement, sx: number, sy: number, size: number): void {
@@ -48,6 +67,10 @@ function drawSprite(ctx: CanvasRenderingContext2D, img: HTMLImageElement, sx: nu
   ctx.beginPath();
   ctx.arc(sx, sy, size / 3, 0, Math.PI * 2);
   ctx.fill();
+}
+
+function needsAnim(): boolean {
+  return (props.world.marches?.length ?? 0) + (props.world.transports?.length ?? 0) > 0;
 }
 
 function draw(): void {
@@ -98,7 +121,7 @@ function draw(): void {
     }
   }
 
-  const now = Date.now();
+  const now = serverNow();
   type Mover = {
     sx: number;
     sy: number;
@@ -195,34 +218,34 @@ function draw(): void {
     );
   }
 
-  const markSize = Math.max(16, Math.min(34, cell * 2.4));
+  const size = markSize();
 
   for (const item of props.world.outposts) {
     const p = toScreen(item.x, item.y);
     const roaming = item.kind === "roaming";
     ctx.globalAlpha = item.garrison > 0 ? 1 : 0.55;
-    drawSprite(ctx, roaming ? sprites.roaming : sprites.outpost, p.sx, p.sy, markSize);
+    drawSprite(ctx, roaming ? sprites.roaming : sprites.outpost, p.sx, p.sy, size);
     ctx.globalAlpha = 1;
   }
 
   for (const item of props.world.markets ?? []) {
     const p = toScreen(item.x, item.y);
-    drawSprite(ctx, sprites.market, p.sx, p.sy, markSize);
+    drawSprite(ctx, sprites.market, p.sx, p.sy, size);
   }
 
   for (const item of props.world.cities) {
     const p = toScreen(item.x, item.y);
-    const size = item.owner === "self" ? markSize + 6 : markSize;
-    drawSprite(ctx, sprites.city, p.sx, p.sy, size);
+    const citySize = item.owner === "self" ? size + 6 : size;
+    drawSprite(ctx, sprites.city, p.sx, p.sy, citySize);
     ctx.strokeStyle = item.owner === "self" ? "#d4a017" : item.owner === "ai" ? "#a34a36" : "#4a8a6a";
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(p.sx, p.sy, size / 2 + 2, 0, Math.PI * 2);
+    ctx.arc(p.sx, p.sy, citySize / 2 + 2, 0, Math.PI * 2);
     ctx.stroke();
     if (item.protected) {
       ctx.strokeStyle = "#7aa0c4";
       ctx.beginPath();
-      ctx.arc(p.sx, p.sy, size / 2 + 6, 0, Math.PI * 2);
+      ctx.arc(p.sx, p.sy, citySize / 2 + 6, 0, Math.PI * 2);
       ctx.stroke();
     }
   }
@@ -262,16 +285,27 @@ function draw(): void {
   }
 }
 
-function hit(clientX: number, clientY: number): void {
+function canvasPoint(clientX: number, clientY: number): { mx: number; my: number } | null {
   const el = canvas.value;
   if (!el) {
-    return;
+    return null;
   }
   const rect = el.getBoundingClientRect();
-  const mx = (clientX - rect.left) * (el.width / Math.max(1, rect.width));
-  const my = (clientY - rect.top) * (el.height / Math.max(1, rect.height));
-  const x = originX.value + (mx - el.width / 2) / scale.value;
-  const y = originY.value + (my - el.height / 2) / scale.value;
+  return {
+    mx: (clientX - rect.left) * (el.width / Math.max(1, rect.width)),
+    my: (clientY - rect.top) * (el.height / Math.max(1, rect.height))
+  };
+}
+
+function hit(clientX: number, clientY: number): void {
+  const el = canvas.value;
+  const pt = canvasPoint(clientX, clientY);
+  if (!el || !pt) {
+    return;
+  }
+  const x = originX.value + (pt.mx - el.width / 2) / scale.value;
+  const y = originY.value + (pt.my - el.height / 2) / scale.value;
+  const radius = hitRadius();
   let best: { targetType: "outpost" | "city" | "market"; targetId: number; label: string; d: number } | null = null;
   const consider = (
     targetType: "outpost" | "city" | "market",
@@ -281,7 +315,7 @@ function hit(clientX: number, clientY: number): void {
     py: number
   ) => {
     const d = Math.hypot(px - x, py - y);
-    if (d <= 1.8 && (!best || d < best.d)) {
+    if (d <= radius && (!best || d < best.d)) {
       best = { targetType, targetId, label, d };
     }
   };
@@ -289,14 +323,19 @@ function hit(clientX: number, clientY: number): void {
     if (item.owner === "self") {
       continue;
     }
-    consider("city", item.id, `${item.name} (${item.x},${item.y})`, item.x, item.y);
+    const owner = item.owner === "ai" ? "AI" : "玩家";
+    const shield = item.protected ? " · 保护中" : "";
+    consider("city", item.id, `${item.name}（${owner}${shield}）(${item.x},${item.y})`, item.x, item.y);
   }
   for (const item of props.world.outposts) {
     let label = item.name;
     if (item.kind === "roaming" && item.expiresAt) {
-      const left = Math.max(0, Date.parse(item.expiresAt) - Date.now());
+      const left = Math.max(0, Date.parse(item.expiresAt) - serverNow());
       const min = Math.max(1, Math.ceil(left / 60000));
       label = `${item.name}（${min}分钟后消失）`;
+    }
+    if (item.garrison <= 0) {
+      label = `${label}（已打空）`;
     }
     consider("outpost", item.id, label, item.x, item.y);
   }
@@ -337,35 +376,98 @@ function onPointerUp(ev: PointerEvent): void {
 
 function onWheel(ev: WheelEvent): void {
   ev.preventDefault();
+  const el = canvas.value;
+  const pt = canvasPoint(ev.clientX, ev.clientY);
+  if (!el || !pt) {
+    return;
+  }
+  const worldX = originX.value + (pt.mx - el.width / 2) / scale.value;
+  const worldY = originY.value + (pt.my - el.height / 2) / scale.value;
   const next = Math.min(24, Math.max(3, scale.value * (ev.deltaY > 0 ? 0.9 : 1.1)));
   scale.value = next;
+  originX.value = worldX - (pt.mx - el.width / 2) / next;
+  originY.value = worldY - (pt.my - el.height / 2) / next;
   draw();
 }
 
-onMounted(() => {
-  raf = requestAnimationFrame(loop);
-});
+function recenter(): void {
+  originX.value = props.world.origin.x;
+  originY.value = props.world.origin.y;
+  scale.value = 8;
+  draw();
+}
+
+function stopLoop(): void {
+  if (raf) {
+    cancelAnimationFrame(raf);
+    raf = 0;
+  }
+}
 
 function loop(): void {
   draw();
+  if (props.active && needsAnim()) {
+    raf = requestAnimationFrame(loop);
+  } else {
+    raf = 0;
+  }
+}
+
+function startLoop(): void {
+  if (!props.active || raf) {
+    return;
+  }
   raf = requestAnimationFrame(loop);
 }
 
+watch(
+  () => props.world,
+  (world) => {
+    snapshotAt = Date.now();
+    snapshotServer = Date.parse(world.serverTime);
+    draw();
+    if (props.active && needsAnim()) {
+      startLoop();
+    }
+  }
+);
+
+watch(
+  () => props.active,
+  (on) => {
+    if (on) {
+      draw();
+      startLoop();
+      return;
+    }
+    stopLoop();
+  }
+);
+
+onMounted(() => {
+  draw();
+  startLoop();
+});
+
 onUnmounted(() => {
-  cancelAnimationFrame(raf);
+  stopLoop();
   dragging = false;
 });
 </script>
 
 <template>
-  <canvas
-    ref="canvas"
-    width="800"
-    height="440"
-    class="map"
-    @pointerdown="onPointerDown"
-    @pointermove="onPointerMove"
-    @pointerup="onPointerUp"
-    @wheel.prevent="onWheel"
-  ></canvas>
+  <div class="map-wrap">
+    <canvas
+      ref="canvas"
+      width="800"
+      height="440"
+      class="map"
+      @pointerdown="onPointerDown"
+      @pointermove="onPointerMove"
+      @pointerup="onPointerUp"
+      @pointercancel="onPointerUp"
+      @wheel.prevent="onWheel"
+    ></canvas>
+    <button type="button" class="map-home" @click="recenter">回城</button>
+  </div>
 </template>

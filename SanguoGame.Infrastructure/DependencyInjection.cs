@@ -32,7 +32,10 @@ public static class DependencyInjection
                     typeof(CharacterEntity),
                     typeof(CityEntity),
                     typeof(RefreshTokenEntity),
-                    typeof(BuildingEntity));
+                    typeof(BuildingEntity),
+                    typeof(OutpostEntity),
+                    typeof(MarchEntity),
+                    typeof(BattleReportEntity));
 
                 orm.Ado.ExecuteNonQuery("""
                     CREATE UNIQUE INDEX IF NOT EXISTS uk_building_city_queue

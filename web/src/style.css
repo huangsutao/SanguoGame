@@ -25,7 +25,7 @@ body {
 }
 
 .page.wide {
-  max-width: 640px;
+  max-width: 720px;
 }
 
 .header h1 {
@@ -63,6 +63,11 @@ body {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+}
+
+.tabs.four {
+  grid-template-columns: repeat(4, 1fr);
+  margin: 12px 0 4px;
 }
 
 .tabs button,
@@ -164,4 +169,31 @@ input {
   display: flex;
   gap: 8px;
   flex-shrink: 0;
+}
+
+.form.inline {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: end;
+}
+
+select {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #4a4338;
+  background: #16130f;
+  color: inherit;
+}
+
+.map {
+  width: 100%;
+  height: auto;
+  border: 1px solid #3a342a;
+  border-radius: 8px;
+  touch-action: none;
+  cursor: grab;
+}
+
+h3 {
+  margin: 16px 0 8px;
+  font-size: 0.95rem;
 }

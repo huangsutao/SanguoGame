@@ -34,6 +34,18 @@ public sealed class CityEntity
     [Column(Name = "copper", IsNullable = false)]
     public int Copper { get; set; } = 2000;
 
+    [Column(Name = "infantry", IsNullable = false)]
+    public int Infantry { get; set; }
+
+    [Column(Name = "archer", IsNullable = false)]
+    public int Archer { get; set; }
+
+    [Column(Name = "cavalry", IsNullable = false)]
+    public int Cavalry { get; set; }
+
+    [Column(Name = "protection_until")]
+    public DateTime? ProtectionUntil { get; set; }
+
     [Column(Name = "created_at", IsNullable = false)]
     public DateTime CreatedAt { get; set; }
 }

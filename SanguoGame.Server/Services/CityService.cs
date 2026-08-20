@@ -103,7 +103,7 @@ public sealed class CityService
     }
 
     private bool IsOccupied(int x, int y) =>
-        _orm.Select<CityEntity>().Any(c => c.X == x && c.Y == y);
+        WorldOccupancy.IsOccupied(_orm, x, y);
 
     private static CityResponse ToResponse(CityEntity city) =>
         new(city.Id, city.CharacterId, city.Name, city.X, city.Y, city.CreatedAt, EmptyZones);

@@ -15,15 +15,15 @@
 | 文档 | 说明 | 状态 |
 |------|------|------|
 | [design-roadmap.md](design-roadmap.md) | 开发顺序、每步范围与验收 | 已定稿 |
-| [design-architecture.md](design-architecture.md) | 总体架构、进程划分、技术选型 | 撰写中 |
+| [design-architecture.md](design-architecture.md) | 总体架构、进程划分、技术选型 | 已定稿 |
 | [design-api.md](design-api.md) | HTTP / SignalR 统一请求与响应信封 | 已定稿 |
 | [design-account-city.md](design-account-city.md) | 账号、角色、主城创建 | 已定稿 |
-| [design-world-map.md](design-world-map.md) | 大地图格子、据点、视野加载 | 撰写中 |
+| [design-world-map.md](design-world-map.md) | 大地图格子、据点、视野加载 | 已定稿 |
 | [design-inner-city.md](design-inner-city.md) | 城内内政 / 科技 / 军事建筑 | 已定稿 |
-| [design-city-wall.md](design-city-wall.md) | 城墙与城防建筑 | 待撰写 |
+| [design-city-wall.md](design-city-wall.md) | 城墙与城防建筑 | 已定稿 |
 | [design-outer-resources.md](design-outer-resources.md) | 城外矿、木、田与产出 | 已定稿 |
-| [design-march-battle.md](design-march-battle.md) | 行军、到达结算、战报 | 待撰写 |
-| [design-pvp.md](design-pvp.md) | 打玩家、掠夺、保护 CD | 待撰写 |
-| [design-ai.md](design-ai.md) | AI 玩家决策与 tick | 待撰写 |
+| [design-march-battle.md](design-march-battle.md) | 行军、到达结算、战报 | 已定稿 |
+| [design-pvp.md](design-pvp.md) | 打玩家、掠夺、保护 CD | 已定稿 |
+| [design-ai.md](design-ai.md) | AI 玩家决策与 tick | 已定稿 |
 | [design-realtime.md](design-realtime.md) | HTTP 指令、SignalR 推送、Hangfire 到点任务 | 已定稿 |
-| [design-frontend-comm.md](design-frontend-comm.md) | Vue 独立工程、CORS / 代理、上线反代 | 撰写中 |
+| [design-frontend-comm.md](design-frontend-comm.md) | Vue 独立工程、CORS / 代理、上线反代 | 已定稿 |

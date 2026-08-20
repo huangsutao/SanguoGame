@@ -12,9 +12,12 @@
 | 探活接口 | `GET /api/system/ping` |
 | 账号 / 建城 | 注册登录、JWT、创角、随机空地建主城已落地（需 PostgreSQL） |
 | 城内建筑 | 建造/升级、到点完成、Hangfire、SignalR `BuildComplete` |
-| 城外资源田 | 四种田建造/升级、按时间现算出产、点收取入库（待联调） |
-| 网页端 | `web/`：登录 / 创角 / 建城 / 城内升级 / 城外收取 |
-| 其余玩法 | 未实现，顺序见 [路线图](Docs/design-roadmap.md) |
+| 城外资源田 | 四种田建造/升级、按时间现算出产、点收取入库 |
+| 城墙 | 箭塔 / 城门 / 陷阱，与全城队列共用 |
+| 军队 / 行军 | 征兵、出征 NPC / 玩家、到点结算、战报 |
+| AI 玩家 | 启动补齐 AI 城；Hangfire tick 升级 / 征兵 / 出征 |
+| 网页端 | `web/`：城池、城墙、出征、战报、Canvas 大地图 |
+| 其余 | 联盟 / 邮件 / 排行另开设计，见 [路线图](Docs/design-roadmap.md) |
 
 ## 仓库结构
 
@@ -105,7 +108,7 @@ SanguoGame/
 7. AI 玩家
 8. 地图表现、联盟、邮件、排行等扩展
 
-**当前下一步是第 3 步。** 城内建筑已联调；城外田 API / 网页已落地，待按公式验收收取。
+**当前第一版玩法已按第 0～8 步落地。** 联调与数值微调可随时进行；联盟 / 邮件 / 排行另开设计。
 
 ## 详细设计文档
 
@@ -115,18 +118,18 @@ SanguoGame/
 |------|------|------|
 | 文档索引与约定 | [Docs/README.md](Docs/README.md) | 已有 |
 | 开发路线图（先做什么） | [Docs/design-roadmap.md](Docs/design-roadmap.md) | 已定稿 |
-| 总体架构与技术选型 | [Docs/design-architecture.md](Docs/design-architecture.md) | 撰写中 |
+| 总体架构与技术选型 | [Docs/design-architecture.md](Docs/design-architecture.md) | 已定稿 |
 | HTTP / SignalR 统一协议 | [Docs/design-api.md](Docs/design-api.md) | 已定稿 |
 | 账号、角色与建城 | [Docs/design-account-city.md](Docs/design-account-city.md) | 已定稿 |
-| 大地图与 NPC 据点 | [Docs/design-world-map.md](Docs/design-world-map.md) | 撰写中 |
+| 大地图与 NPC 据点 | [Docs/design-world-map.md](Docs/design-world-map.md) | 已定稿 |
 | 城内建筑（内政 / 科技 / 军事） | [Docs/design-inner-city.md](Docs/design-inner-city.md) | 已定稿 |
-| 城墙与城防 | [Docs/design-city-wall.md](Docs/design-city-wall.md) | 待撰写 |
+| 城墙与城防 | [Docs/design-city-wall.md](Docs/design-city-wall.md) | 已定稿 |
 | 城外资源田 | [Docs/design-outer-resources.md](Docs/design-outer-resources.md) | 已定稿 |
-| 行军与战斗结算 | [Docs/design-march-battle.md](Docs/design-march-battle.md) | 待撰写 |
-| 玩家对战与掠夺 | [Docs/design-pvp.md](Docs/design-pvp.md) | 待撰写 |
-| AI 玩家 | [Docs/design-ai.md](Docs/design-ai.md) | 待撰写 |
+| 行军与战斗结算 | [Docs/design-march-battle.md](Docs/design-march-battle.md) | 已定稿 |
+| 玩家对战与掠夺 | [Docs/design-pvp.md](Docs/design-pvp.md) | 已定稿 |
+| AI 玩家 | [Docs/design-ai.md](Docs/design-ai.md) | 已定稿 |
 | 实时推送与定时任务 | [Docs/design-realtime.md](Docs/design-realtime.md) | 已定稿 |
-| 网页端与前后端通讯 | [Docs/design-frontend-comm.md](Docs/design-frontend-comm.md) | 撰写中 |
+| 网页端与前后端通讯 | [Docs/design-frontend-comm.md](Docs/design-frontend-comm.md) | 已定稿 |
 
 ## 本地运行服务端
 

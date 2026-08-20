@@ -49,6 +49,24 @@ public static class ErrorCodes
     /// <summary>建筑前置未满足。</summary>
     public const int BuildingPrerequisite = 40909;
 
+    /// <summary>兵力不足。</summary>
+    public const int InsufficientTroops = 40910;
+
+    /// <summary>目标处于保护期。</summary>
+    public const int CityProtected = 40912;
+
+    /// <summary>不能进攻自己的城。</summary>
+    public const int CannotAttackSelf = 40914;
+
+    /// <summary>兵营等级不足。</summary>
+    public const int BarracksRequired = 40915;
+
+    /// <summary>超出带兵上限。</summary>
+    public const int TroopCapExceeded = 40916;
+
+    /// <summary>行军数量已达上限。</summary>
+    public const int MarchLimit = 40917;
+
     /// <summary>未处理的服务器异常。</summary>
     public const int InternalError = 50000;
 }

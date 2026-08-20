@@ -133,3 +133,106 @@ export interface FieldsCollectDto {
   collected: ResourceDto;
   fields: FieldItemDto[];
 }
+
+export interface WallsOverviewDto {
+  cityId: number;
+  serverTime: string;
+  resources: ResourceDto;
+  resourceCap: number;
+  wallDefense: number;
+  trapBonus: number;
+  queue?: BuildingQueueDto;
+  walls: BuildingItemDto[];
+}
+
+export interface TroopDto {
+  infantry: number;
+  archer: number;
+  cavalry: number;
+}
+
+export interface MarchDto {
+  id: number;
+  targetType: "outpost" | "city";
+  targetId: number;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  troops: TroopDto;
+  departAt: string;
+  arriveAt: string;
+  status: "marching" | "settled";
+  mine: boolean;
+}
+
+export interface ArmyOverviewDto {
+  cityId: number;
+  serverTime: string;
+  resources: ResourceDto;
+  resourceCap: number;
+  troops: TroopDto;
+  troopCap: number;
+  barracksLevel: number;
+  wallDefense: number;
+  protectionUntil?: string;
+  marches: MarchDto[];
+}
+
+export interface BattleReportDto {
+  id: number;
+  marchId: number;
+  attackerCityId: number;
+  defenderType: "outpost" | "city";
+  defenderId: number;
+  attackerWon: boolean;
+  attackerBefore: TroopDto;
+  attackerAfter: TroopDto;
+  defenderBefore: TroopDto;
+  defenderAfter: TroopDto;
+  loot: ResourceDto;
+  seed: number;
+  summary: string;
+  createdAt: string;
+}
+
+export interface PagedResult<T> {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
+export interface WorldCityDto {
+  id: number;
+  name: string;
+  x: number;
+  y: number;
+  owner: "self" | "ai" | "player";
+  protected: boolean;
+}
+
+export interface WorldOutpostDto {
+  id: number;
+  type: string;
+  name: string;
+  x: number;
+  y: number;
+  garrison: number;
+}
+
+export interface WorldDto {
+  width: number;
+  height: number;
+  serverTime: string;
+  origin: { x: number; y: number };
+  cities: WorldCityDto[];
+  outposts: WorldOutpostDto[];
+  marches: MarchDto[];
+}
+
+export interface MarchTarget {
+  targetType: "outpost" | "city";
+  targetId: number;
+  label: string;
+}

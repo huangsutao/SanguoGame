@@ -95,6 +95,12 @@ internal static class AuthenticationExtensions
         services.AddScoped<CityService>();
         services.AddScoped<BuildingService>();
         services.AddScoped<FieldService>();
+        services.AddScoped<WallService>();
+        services.AddScoped<ArmyService>();
+        services.AddScoped<MarchService>();
+        services.AddScoped<WorldService>();
+        services.AddScoped<SeedService>();
+        services.AddScoped<AiService>();
         return services;
     }
 

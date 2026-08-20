@@ -73,6 +73,9 @@ public sealed class BattleReportEntity
     [Column(Name = "loot_copper", IsNullable = false)]
     public int LootCopper { get; set; }
 
+    [Column(Name = "yuanbao", IsNullable = false)]
+    public int Yuanbao { get; set; }
+
     [Column(Name = "seed", IsNullable = false)]
     public int Seed { get; set; }
 

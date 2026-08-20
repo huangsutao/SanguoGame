@@ -1,10 +1,15 @@
 using FreeSql;
+using Hangfire;
+using Microsoft.AspNetCore.SignalR;
 using SanguoGame.Core;
 using SanguoGame.Core.Army;
 using SanguoGame.Core.Buildings;
 using SanguoGame.Core.Daily;
+using SanguoGame.Core.Shop;
 using SanguoGame.Infrastructure.Entities;
 using SanguoGame.Server.Contracts;
+using SanguoGame.Server.Hubs;
+using SanguoGame.Server.Jobs;
 
 namespace SanguoGame.Server.Services;
 
@@ -12,11 +17,15 @@ public sealed class ArmyService
 {
     private readonly IFreeSql _orm;
     private readonly DailyService _daily;
+    private readonly IBackgroundJobClient _jobs;
+    private readonly IHubContext<GameHub> _hub;
 
-    public ArmyService(IFreeSql orm, DailyService daily)
+    public ArmyService(IFreeSql orm, DailyService daily, IBackgroundJobClient jobs, IHubContext<GameHub> hub)
     {
         _orm = orm;
         _daily = daily;
+        _jobs = jobs;
+        _hub = hub;
     }
 
     public async Task<ArmyOverviewDto> GetOverviewAsync(long accountId, CancellationToken cancellationToken)
@@ -39,7 +48,7 @@ public sealed class ArmyService
         }
 
         var city = await RequireCityAsync(accountId, cancellationToken);
-        await CityRowLock.RunAsync(_orm, city.Id, async (transaction, locked, ct) =>
+        var finishAt = await CityRowLock.RunAsync(_orm, city.Id, async (transaction, locked, ct) =>
         {
             var rows = await _orm.Select<BuildingEntity>()
                 .WithTransaction(transaction)
@@ -49,6 +58,11 @@ public sealed class ArmyService
             if (barracksLevel < def.RequireBarracksLevel)
             {
                 throw new BizException(ErrorCodes.BarracksRequired, $"需要兵营 {def.RequireBarracksLevel} 级");
+            }
+
+            if (locked.RecruitFinishAt is not null && !string.IsNullOrWhiteSpace(locked.RecruitType))
+            {
+                throw new BizException(ErrorCodes.RecruitQueueBusy, "本城正在征兵");
             }
 
             var marching = await MarchingTroopsAsync(transaction, locked.Id, ct);
@@ -71,7 +85,13 @@ public sealed class ArmyService
             }
 
             CityStats.ApplyStock(locked, stock.Subtract(cost));
-            CityStats.ApplyTroops(locked, stationed.Add(def.Type, count));
+            var now = DateTime.UtcNow;
+            var buffs = await CityBuffStore.LoadAsync(_orm, locked.Id, ct, transaction);
+            var speed = ItemCatalog.RecruitSpeedPercent(buffs, now);
+            var finish = now.AddSeconds(RecruitTiming.DurationSeconds(def.Type, count, speed));
+            locked.RecruitType = def.Type;
+            locked.RecruitCount = count;
+            locked.RecruitFinishAt = finish;
             await UpdateCityAsync(transaction, locked, ct);
             city.Grain = locked.Grain;
             city.Wood = locked.Wood;
@@ -80,11 +100,98 @@ public sealed class ArmyService
             city.Infantry = locked.Infantry;
             city.Archer = locked.Archer;
             city.Cavalry = locked.Cavalry;
-            return 0;
+            city.RecruitType = locked.RecruitType;
+            city.RecruitCount = locked.RecruitCount;
+            city.RecruitFinishAt = locked.RecruitFinishAt;
+            return finish;
         }, cancellationToken);
 
+        _jobs.Schedule<CompleteRecruitJob>(
+            job => job.Execute(city.Id, def.Type, count),
+            UtcSchedule.At(finishAt));
         await _daily.AddProgressAsync(city.Id, DailyCatalog.Recruit, count, cancellationToken);
         return await BuildOverviewAsync(city, cancellationToken);
+    }
+
+    public async Task CompleteRecruitAsync(long cityId, string troopType, int count, CancellationToken cancellationToken)
+    {
+        CityEntity? city;
+        string? completedType = null;
+        var completedCount = 0;
+        try
+        {
+            city = await CityRowLock.RunAsync(_orm, cityId, async (transaction, locked, ct) =>
+            {
+                if (locked.RecruitFinishAt is null
+                    || string.IsNullOrWhiteSpace(locked.RecruitType)
+                    || !locked.RecruitType.Equals(troopType, StringComparison.OrdinalIgnoreCase)
+                    || locked.RecruitCount != count)
+                {
+                    return locked;
+                }
+
+                if (locked.RecruitFinishAt > DateTime.UtcNow.AddSeconds(2))
+                {
+                    _jobs.Schedule<CompleteRecruitJob>(
+                        job => job.Execute(cityId, troopType, count),
+                        UtcSchedule.At(locked.RecruitFinishAt.Value));
+                    return locked;
+                }
+
+                var rows = await _orm.Select<BuildingEntity>()
+                    .WithTransaction(transaction)
+                    .Where(b => b.CityId == locked.Id)
+                    .ToListAsync(ct);
+                var barracksLevel = CityStats.BuildingLevel(rows, "barracks");
+                var cap = InnerBuildingCatalog.TroopCap(barracksLevel);
+                var marching = await MarchingTroopsAsync(transaction, locked.Id, ct);
+                var stationed = CityStats.Troops(locked);
+                var room = Math.Max(0, cap - marching.Total);
+                CityStats.ApplyTroops(
+                    locked,
+                    CityStats.FitCap(stationed.Add(locked.RecruitType, locked.RecruitCount), room));
+                completedType = locked.RecruitType;
+                completedCount = locked.RecruitCount;
+                locked.RecruitType = null;
+                locked.RecruitCount = 0;
+                locked.RecruitFinishAt = null;
+                await UpdateCityAsync(transaction, locked, ct);
+                return locked;
+            }, cancellationToken);
+        }
+        catch (BizException ex) when (ex.Code == ErrorCodes.NotFound)
+        {
+            return;
+        }
+
+        if (completedType is null || city is null)
+        {
+            return;
+        }
+
+        var overview = await BuildOverviewAsync(city, cancellationToken);
+        var payload = new RecruitCompleteDto(
+            city.Id,
+            completedType,
+            completedCount,
+            overview.ServerTime,
+            overview.Troops);
+        await _hub.Clients.Group($"city:{cityId}")
+            .SendAsync("RecruitComplete", ApiResult.Ok(payload), cancellationToken);
+    }
+
+    public async Task RecoverDueAsync(CancellationToken cancellationToken)
+    {
+        var due = await _orm.Select<CityEntity>()
+            .Where(c => c.RecruitFinishAt != null && c.RecruitFinishAt <= DateTime.UtcNow && c.RecruitType != null)
+            .ToListAsync(cancellationToken);
+        foreach (var city in due)
+        {
+            if (!string.IsNullOrWhiteSpace(city.RecruitType))
+            {
+                await CompleteRecruitAsync(city.Id, city.RecruitType, city.RecruitCount, cancellationToken);
+            }
+        }
     }
 
     internal async Task<ArmyOverviewDto> BuildOverviewAsync(CityEntity city, CancellationToken cancellationToken)
@@ -102,6 +209,11 @@ public sealed class ArmyService
             .Where(m => m.FromCityId == city.Id && m.Status == MarchStatus.Marching)
             .OrderBy(m => m.ArriveAt)
             .ToListAsync(cancellationToken);
+        RecruitQueueDto? queue = null;
+        if (city.RecruitFinishAt is { } finish && !string.IsNullOrWhiteSpace(city.RecruitType))
+        {
+            queue = new RecruitQueueDto(city.RecruitType, city.RecruitCount, finish);
+        }
 
         return new ArmyOverviewDto(
             city.Id,
@@ -124,7 +236,8 @@ public sealed class ArmyService
                     new ResourceDto(unit.Grain, unit.Wood, unit.Iron, unit.Copper));
             }).ToList(),
             TechBonuses.TroopPowerPercent(drillHallLevel),
-            discountPercent);
+            discountPercent,
+            queue);
     }
 
     internal static MarchDto MapMarch(MarchEntity march, bool mine, bool includeTroops = true) =>
@@ -192,7 +305,10 @@ public sealed class ArmyService
                 c.Copper,
                 c.Infantry,
                 c.Archer,
-                c.Cavalry
+                c.Cavalry,
+                c.RecruitType,
+                c.RecruitCount,
+                c.RecruitFinishAt
             })
             .ExecuteAffrowsAsync(cancellationToken);
 }

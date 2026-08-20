@@ -66,10 +66,12 @@ public sealed class TechApiTests
             "/api/army/recruit",
             new { troopType = "infantry", count = 5 });
         Assert.Equal(0, recruited.Code);
-        Assert.Equal(5, recruited.Data?.Troops.Infantry);
-        Assert.Equal(1902, recruited.Data?.Resources.Grain);
-        Assert.Equal(1976, recruited.Data?.Resources.Wood);
-        Assert.Equal(1951, recruited.Data?.Resources.Iron);
+        await _factory.ForceCompleteRecruitsAsync();
+        var (_, ready) = await api.Get<ArmyOverviewDto>("/api/army");
+        Assert.Equal(5, ready.Data?.Troops.Infantry);
+        Assert.Equal(1902, ready.Data?.Resources.Grain);
+        Assert.Equal(1976, ready.Data?.Resources.Wood);
+        Assert.Equal(1951, ready.Data?.Resources.Iron);
     }
 
     [SkippableFact]

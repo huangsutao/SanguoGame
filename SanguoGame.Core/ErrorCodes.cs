@@ -106,6 +106,21 @@ public static class ErrorCodes
     /// <summary>目标不可侦察。</summary>
     public const int ScoutNotAllowed = 40930;
 
+    /// <summary>元宝不足。</summary>
+    public const int InsufficientYuanbao = 40931;
+
+    /// <summary>道具数量不足。</summary>
+    public const int ItemNotEnough = 40932;
+
+    /// <summary>行军或运输未结束，不能迁城。</summary>
+    public const int RelocateBlocked = 40933;
+
+    /// <summary>迁城目标非法。</summary>
+    public const int InvalidRelocateTarget = 40934;
+
+    /// <summary>本城征兵队列占用中。</summary>
+    public const int RecruitQueueBusy = 40935;
+
     /// <summary>请求过于频繁。</summary>
     public const int TooManyRequests = 42900;
 

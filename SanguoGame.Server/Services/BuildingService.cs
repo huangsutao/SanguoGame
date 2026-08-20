@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.SignalR;
 using SanguoGame.Core;
 using SanguoGame.Core.Buildings;
 using SanguoGame.Core.Daily;
+using SanguoGame.Core.Shop;
 using SanguoGame.Infrastructure;
 using SanguoGame.Infrastructure.Entities;
 using SanguoGame.Server.Contracts;
@@ -90,7 +91,10 @@ public sealed class BuildingService
             }
 
             var now = DateTime.UtcNow;
-            var plannedFinish = now.AddSeconds(InnerBuildingCatalog.DurationSeconds(def, targetLevel));
+            var buffs = await CityBuffStore.LoadAsync(_orm, lockedCity.Id, ct, transaction);
+            var speed = ItemCatalog.SpeedPercentOf(def.Type, buffs, now);
+            var plannedFinish = now.AddSeconds(
+                ItemCatalog.ApplySpeed(InnerBuildingCatalog.DurationSeconds(def, targetLevel), speed));
             var remain = stock.Subtract(cost);
             lockedCity.Grain = remain.Grain;
             lockedCity.Wood = remain.Wood;
@@ -195,17 +199,23 @@ public sealed class BuildingService
                         .Where(b => b.CityId == cityId && b.Type == TechBonuses.ResourceHall)
                         .FirstAsync(ct);
                     var prod = TechBonuses.ProductionPercent(hall?.Level ?? 0);
+                    var buffs = await CityBuffStore.LoadAsync(_orm, cityId, ct, transaction);
+                    var itemPercent = ItemCatalog.ResourceBoostOf(buffs, now);
+                    var itemExpire = ItemCatalog.ResourceBoostExpireAt(buffs, now);
                     if (def is not null && row.LastCollectedAt is not null && previousLevel >= 1)
                     {
                         var pending = FieldProduction.Pending(
                             TechBonuses.ApplyPercent(def.RatePerHour(previousLevel), prod),
                             TechBonuses.ApplyPercent(def.FieldCap(previousLevel), prod),
                             row.LastCollectedAt,
-                            now);
-                        row.LastCollectedAt = FieldProduction.AfterCollect(
                             now,
-                            pending,
-                            TechBonuses.ApplyPercent(def.RatePerHour(targetLevel), prod));
+                            itemPercent,
+                            itemExpire);
+                        var newRate = TechBonuses.ApplyPercent(def.RatePerHour(targetLevel), prod);
+                        var collectRate = itemExpire is { } until && until > now
+                            ? TechBonuses.ApplyPercent(newRate, itemPercent)
+                            : newRate;
+                        row.LastCollectedAt = FieldProduction.AfterCollect(now, pending, collectRate);
                     }
                     else if (row.LastCollectedAt is null)
                     {
@@ -220,12 +230,14 @@ public sealed class BuildingService
 
                 if (buildingType == TechBonuses.ResourceHall)
                 {
+                    var buffs = await CityBuffStore.LoadAsync(_orm, cityId, ct, transaction);
                     await RecalibrateFieldsAsync(
                         transaction,
                         cityId,
                         TechBonuses.ProductionPercent(previousLevel),
                         TechBonuses.ProductionPercent(targetLevel),
                         now,
+                        buffs,
                         ct);
                 }
 
@@ -277,6 +289,7 @@ public sealed class BuildingService
         int oldPercent,
         int newPercent,
         DateTime now,
+        IReadOnlyList<SanguoGame.Core.Shop.ActiveBuff> buffs,
         CancellationToken cancellationToken)
     {
         if (oldPercent == newPercent)
@@ -296,15 +309,20 @@ public sealed class BuildingService
                 continue;
             }
 
+            var itemPercent = ItemCatalog.ResourceBoostOf(buffs, now);
+            var itemExpire = ItemCatalog.ResourceBoostExpireAt(buffs, now);
             var pending = FieldProduction.Pending(
                 TechBonuses.ApplyPercent(def.RatePerHour(field.Level), oldPercent),
                 TechBonuses.ApplyPercent(def.FieldCap(field.Level), oldPercent),
                 field.LastCollectedAt,
-                now);
-            field.LastCollectedAt = FieldProduction.AfterCollect(
                 now,
-                pending,
-                TechBonuses.ApplyPercent(def.RatePerHour(field.Level), newPercent));
+                itemPercent,
+                itemExpire);
+            var newRate = TechBonuses.ApplyPercent(def.RatePerHour(field.Level), newPercent);
+            var collectRate = itemExpire is { } until && until > now
+                ? TechBonuses.ApplyPercent(newRate, itemPercent)
+                : newRate;
+            field.LastCollectedAt = FieldProduction.AfterCollect(now, pending, collectRate);
             field.UpdatedAt = now;
             await _orm.Update<BuildingEntity>()
                 .WithTransaction(transaction)
@@ -348,6 +366,8 @@ public sealed class BuildingService
         var queueRow = rows.FirstOrDefault(b => b.Status == BuildingStatus.Upgrading);
         var stock = ToAmount(city);
         var queueBusy = queueRow is not null;
+        var now = DateTime.UtcNow;
+        var buffs = await CityBuffStore.LoadAsync(_orm, city.Id, cancellationToken);
 
         BuildingQueueDto? queue = null;
         if (queueRow is { TargetLevel: int qLevel, FinishAt: { } qFinish })
@@ -371,9 +391,10 @@ public sealed class BuildingService
             else
             {
                 var cost = InnerBuildingCatalog.CostToReach(def, nextLevel);
+                var speed = ItemCatalog.SpeedPercentOf(def.Type, buffs, now);
                 next = new BuildingCostDto(
                     nextLevel,
-                    InnerBuildingCatalog.DurationSeconds(def, nextLevel),
+                    ItemCatalog.ApplySpeed(InnerBuildingCatalog.DurationSeconds(def, nextLevel), speed),
                     new ResourceDto(cost.Grain, cost.Wood, cost.Iron, cost.Copper));
 
                 if (status == BuildingStatus.Upgrading)
@@ -410,7 +431,7 @@ public sealed class BuildingService
 
         return new BuildingsOverviewDto(
             city.Id,
-            DateTime.UtcNow,
+            now,
             new ResourceDto(city.Grain, city.Wood, city.Iron, city.Copper),
             InnerBuildingCatalog.ResourceCap(warehouseLevel),
             InnerBuildingCatalog.PopulationCap(houseLevel),

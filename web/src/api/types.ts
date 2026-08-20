@@ -188,6 +188,13 @@ export interface ArmyOverviewDto {
   troopTypes: TroopTypeDto[];
   troopPowerBonusPercent?: number;
   recruitDiscountPercent?: number;
+  recruitQueue?: RecruitQueueDto;
+}
+
+export interface RecruitQueueDto {
+  troopType: string;
+  count: number;
+  finishAt: string;
 }
 
 export interface BattleReportDto {
@@ -205,6 +212,7 @@ export interface BattleReportDto {
   seed: number;
   summary: string;
   createdAt: string;
+  yuanbao?: number;
 }
 
 export interface PagedResult<T> {
@@ -415,4 +423,35 @@ export interface RankingDto {
   myRank?: number;
   myScore: number;
   items: RankingEntryDto[];
+}
+
+export type ItemKind = "buff" | "consumable";
+
+export interface ShopCatalogItemDto {
+  type: string;
+  name: string;
+  kind: ItemKind;
+  price: number;
+  durationHours?: number;
+  speedPercent?: number;
+  owned: number;
+  description: string;
+}
+
+export interface ShopBuffDto {
+  type: string;
+  name: string;
+  expireAt: string;
+  speedPercent: number;
+}
+
+export interface ShopOverviewDto {
+  cityId: number;
+  serverTime: string;
+  yuanbao: number;
+  x: number;
+  y: number;
+  protectionUntil?: string;
+  catalog: ShopCatalogItemDto[];
+  buffs: ShopBuffDto[];
 }

@@ -37,16 +37,45 @@ public static class OuterFieldCatalog
 
 public static class FieldProduction
 {
-    public static int Pending(int ratePerHour, int fieldCap, DateTime? lastCollectedAt, DateTime now)
+    public static int Pending(
+        int ratePerHour,
+        int fieldCap,
+        DateTime? lastCollectedAt,
+        DateTime now,
+        int boostPercent = 0,
+        DateTime? boostExpireAt = null)
     {
         if (ratePerHour <= 0 || fieldCap <= 0 || lastCollectedAt is null)
         {
             return 0;
         }
 
-        var elapsed = Math.Max(0d, (AsUtc(now) - AsUtc(lastCollectedAt.Value)).TotalSeconds);
-        var pending = (int)Math.Floor(ratePerHour * elapsed / 3600d);
-        return Math.Min(pending, fieldCap);
+        var last = AsUtc(lastCollectedAt.Value);
+        now = AsUtc(now);
+        if (now <= last)
+        {
+            return 0;
+        }
+
+        var expire = boostExpireAt is { } until ? AsUtc(until) : (DateTime?)null;
+        double produced;
+        if (boostPercent <= 0 || expire is null || expire <= last)
+        {
+            produced = ratePerHour * (now - last).TotalSeconds / 3600d;
+        }
+        else if (expire >= now)
+        {
+            var boosted = TechBonuses.ApplyPercent(ratePerHour, boostPercent);
+            produced = boosted * (now - last).TotalSeconds / 3600d;
+        }
+        else
+        {
+            var boosted = TechBonuses.ApplyPercent(ratePerHour, boostPercent);
+            produced = boosted * (expire.Value - last).TotalSeconds / 3600d
+                + ratePerHour * (now - expire.Value).TotalSeconds / 3600d;
+        }
+
+        return Math.Min((int)Math.Floor(Math.Max(0d, produced)), fieldCap);
     }
 
     public static DateTime AfterCollect(DateTime now, int leftover, int ratePerHour)

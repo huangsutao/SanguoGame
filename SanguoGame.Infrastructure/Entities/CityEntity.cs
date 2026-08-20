@@ -46,6 +46,18 @@ public sealed class CityEntity
     [Column(Name = "protection_until")]
     public DateTime? ProtectionUntil { get; set; }
 
+    [Column(Name = "yuanbao", IsNullable = false)]
+    public int Yuanbao { get; set; }
+
+    [Column(Name = "recruit_type", StringLength = 16)]
+    public string? RecruitType { get; set; }
+
+    [Column(Name = "recruit_count", IsNullable = false)]
+    public int RecruitCount { get; set; }
+
+    [Column(Name = "recruit_finish_at")]
+    public DateTime? RecruitFinishAt { get; set; }
+
     [Column(Name = "created_at", IsNullable = false)]
     public DateTime CreatedAt { get; set; }
 }

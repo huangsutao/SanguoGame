@@ -19,7 +19,7 @@
 
 | 项 | 值 |
 |----|----|
-| 已完成 | 第 0～12 步；第一版数值已按联调缩短时长、加大田产出 |
+| 已完成 | 第 0～13 步；第一版数值已按联调缩短时长、加大田产出 |
 | 正在做 / 下一步 | 第一版玩法已齐。召回行军、占领据点、武将不在本路线图内 |
 | 立刻要写的文档 | — |
 
@@ -40,6 +40,7 @@
 | 10 | 市集兑换与同盟运输 | [市集](design-market.md) | NPC 市集点、`sg_transport`、`TransportArrived` | **已完成** |
 | 11 | 分科科技建筑与加成 | [科技](design-tech.md) | 演武堂 / 城防署 / 司农院 | **已完成** |
 | 12 | 每日军务与斥候侦察 | [每日军务与斥候](design-daily-scout.md) | `sg_daily_quest`、`sg_march.kind` | **已完成** |
+| 13 | 商城、元宝与道具 | [商城](design-shop.md) | `sg_item` / `sg_buff`、征兵队列、迁城 | **已完成** |
 
 网页端：第 1 步末搭最小 Vue（登录 + 我的城）；城内界面跟第 2 步；出征面板跟第 5 步；大地图画布放第 8 步。不要第 0 步先做空前端。
 
@@ -422,6 +423,31 @@
 
 ---
 
+## 第 13 步：商城、元宝与道具（已完成）
+
+**目标：** 出征能掉元宝；能用元宝买加速 / 丰收 / 迁城令；时效可叠加；征兵改为到点入帐。
+
+### 先定稿
+
+- [design-shop.md](design-shop.md)
+
+### 做
+
+- 城上元宝；战胜 70% 掉 20～40，战败 30% 掉 5～12
+- `GET/POST /api/shop` 购买与使用；时效类时间累加、百分比不叠加
+- 征兵队列；迁城令随机空地 / 指定坐标
+- Vue 商城页、元宝 HUD、征兵倒计时
+
+### 不做
+
+- 充值、玩家交易、加速行军 / 运输
+
+### 验收
+
+- 见 [商城、元宝与道具](design-shop.md) 验收条
+
+---
+
 ## 明确不做（第一版全程）
 
 - 全图实时视野、帧同步、即时 RTS
@@ -443,3 +469,4 @@
 | 市集 / 运输 | `design-market.md` | `SanguoGame.Core` 汇率；`sg_market` / `sg_transport`；`MarketsController` |
 | 科技建筑 | `design-tech.md` | `SanguoGame.Core` 加成公式；`InnerBuildingCatalog` 三座分科 |
 | 每日军务 / 斥候 | `design-daily-scout.md` | `sg_daily_quest`；`MarchKind`；`DailyController` / `army/scout` |
+| 商城 / 元宝 / 道具 | `design-shop.md` | `sg_item` / `sg_buff`；`ShopController`；征兵队列；迁城 |

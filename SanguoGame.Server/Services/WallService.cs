@@ -1,6 +1,7 @@
 using FreeSql;
 using SanguoGame.Core;
 using SanguoGame.Core.Buildings;
+using SanguoGame.Core.Shop;
 using SanguoGame.Infrastructure.Entities;
 using SanguoGame.Server.Contracts;
 
@@ -40,11 +41,18 @@ public sealed class WallService
         var rows = await _orm.Select<BuildingEntity>()
             .Where(b => b.CityId == city.Id)
             .ToListAsync(cancellationToken);
-        return MapOverview(city, rows);
+        var buffs = await CityBuffStore.LoadAsync(_orm, city.Id, cancellationToken);
+        return MapOverview(city, rows, buffs);
     }
 
-    internal static WallsOverviewDto MapOverview(CityEntity city, IReadOnlyList<BuildingEntity> rows)
+    internal static WallsOverviewDto MapOverview(
+        CityEntity city,
+        IReadOnlyList<BuildingEntity> rows,
+        IReadOnlyList<ActiveBuff>? buffs = null)
     {
+        buffs ??= [];
+        var now = DateTime.UtcNow;
+        var upgradeSpeed = ItemCatalog.SpeedPercentOf("arrowTower", buffs, now);
         var byType = rows.ToDictionary(b => b.Type, StringComparer.OrdinalIgnoreCase);
         var palaceLevel = byType.TryGetValue("palace", out var palace) ? palace.Level : 0;
         var warehouseLevel = byType.TryGetValue("warehouse", out var warehouse) ? warehouse.Level : 0;
@@ -82,7 +90,7 @@ public sealed class WallService
                 var cost = InnerBuildingCatalog.CostToReach(def.AsUpgradeDef(), nextLevel);
                 next = new BuildingCostDto(
                     nextLevel,
-                    InnerBuildingCatalog.DurationSeconds(def.AsUpgradeDef(), nextLevel),
+                    ItemCatalog.ApplySpeed(InnerBuildingCatalog.DurationSeconds(def.AsUpgradeDef(), nextLevel), upgradeSpeed),
                     new ResourceDto(cost.Grain, cost.Wood, cost.Iron, cost.Copper));
 
                 if (status == BuildingStatus.Upgrading)

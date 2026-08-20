@@ -19,7 +19,8 @@ import type {
   AlliancePendingDto,
   AllianceSummaryDto,
   MarketsOverviewDto,
-  DailyOverviewDto
+  DailyOverviewDto,
+  ShopOverviewDto
 } from "./types";
 
 export function register(username: string, password: string): Promise<TokenResponse> {
@@ -219,4 +220,21 @@ export function aidMarket(
     iron,
     copper
   });
+}
+
+export function fetchShop(): Promise<ShopOverviewDto> {
+  return request<ShopOverviewDto>("get", "/api/shop");
+}
+
+export function buyShopItem(itemType: string, count: number): Promise<ShopOverviewDto> {
+  return request<ShopOverviewDto>("post", "/api/shop/buy", { itemType, count });
+}
+
+export function useShopItem(
+  itemType: string,
+  count = 1,
+  x?: number,
+  y?: number
+): Promise<ShopOverviewDto> {
+  return request<ShopOverviewDto>("post", "/api/shop/use", { itemType, count, x, y });
 }

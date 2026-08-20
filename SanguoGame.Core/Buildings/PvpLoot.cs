@@ -25,7 +25,9 @@ public static class PvpLoot
         int attackerCap,
         IReadOnlyList<FieldLootInput> fields,
         DateTime now,
-        int productionPercent = 0)
+        int productionPercent = 0,
+        int resourceBoostPercent = 0,
+        DateTime? resourceBoostExpireAt = null)
     {
         var byType = fields.ToDictionary(f => f.Type, StringComparer.OrdinalIgnoreCase);
         var space = new ResourceAmount(
@@ -47,11 +49,20 @@ public static class PvpLoot
 
             var rate = TechBonuses.ApplyPercent(def.RatePerHour(field.Level), productionPercent);
             var fieldCap = TechBonuses.ApplyPercent(def.FieldCap(field.Level), productionPercent);
-            var pending = FieldProduction.Pending(rate, fieldCap, field.LastCollectedAt, now);
+            var pending = FieldProduction.Pending(
+                rate,
+                fieldCap,
+                field.LastCollectedAt,
+                now,
+                resourceBoostPercent,
+                resourceBoostExpireAt);
             var maxTake = (int)Math.Floor(pending * FieldTakeRatio);
             var fromField = Math.Min(maxTake, space.Get(def.Resource));
             var leftover = pending - fromField;
-            updates.Add(new FieldLootOutput(def.Type, FieldProduction.AfterCollect(now, leftover, rate)));
+            var collectRate = resourceBoostExpireAt is { } until && until > now
+                ? TechBonuses.ApplyPercent(rate, resourceBoostPercent)
+                : rate;
+            updates.Add(new FieldLootOutput(def.Type, FieldProduction.AfterCollect(now, leftover, collectRate)));
             if (fromField <= 0)
             {
                 continue;

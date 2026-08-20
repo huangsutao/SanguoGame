@@ -11,6 +11,8 @@ namespace SanguoGame.Server.Services;
 
 public sealed class WorldService
 {
+    private const long RoamingLockId = 87342017;
+
     private readonly IFreeSql _orm;
     private readonly WorldMapOptions _map;
 
@@ -136,47 +138,55 @@ public sealed class WorldService
 
     public async Task TickRoamingAsync(CancellationToken cancellationToken)
     {
-        var now = DateTime.UtcNow;
-        await PurgeExpiredRoamingAsync(now, cancellationToken);
-
-        var existing = (int)await _orm.Select<OutpostEntity>()
-            .Where(o => o.Kind == OutpostKind.Roaming)
-            .CountAsync(cancellationToken);
-        var attempts = 0;
-        var maxAttempts = Math.Max(_map.RoamingOutpostCount * 4, 8);
-        var lifetime = Math.Max(30, _map.RoamingOutpostLifetimeSeconds);
-        while (existing < _map.RoamingOutpostCount && attempts < maxAttempts)
+        await _orm.Ado.ExecuteNonQueryAsync("SELECT pg_advisory_lock(" + RoamingLockId + ")");
+        try
         {
-            attempts++;
-            var def = OutpostCatalog.Roaming[existing % OutpostCatalog.Roaming.Count];
-            var cell = await MapPlacement.TryPickEmptyCellAsync(
-                _map.Width,
-                _map.Height,
-                _map.PlacementMaxAttempts,
-                (x, y, ct) => WorldOccupancy.IsOccupiedAsync(_orm, x, y, ct),
-                cancellationToken);
-            if (cell is null)
-            {
-                break;
-            }
+            var now = DateTime.UtcNow;
+            await PurgeExpiredRoamingAsync(now, cancellationToken);
 
-            try
+            var existing = (int)await _orm.Select<OutpostEntity>()
+                .Where(o => o.Kind == OutpostKind.Roaming)
+                .CountAsync(cancellationToken);
+            var attempts = 0;
+            var maxAttempts = Math.Max(_map.RoamingOutpostCount * 4, 8);
+            var lifetime = Math.Max(30, _map.RoamingOutpostLifetimeSeconds);
+            while (existing < _map.RoamingOutpostCount && attempts < maxAttempts)
             {
-                await _orm.Insert(new OutpostEntity
+                attempts++;
+                var def = OutpostCatalog.Roaming[existing % OutpostCatalog.Roaming.Count];
+                var cell = await MapPlacement.TryPickEmptyCellAsync(
+                    _map.Width,
+                    _map.Height,
+                    _map.PlacementMaxAttempts,
+                    (x, y, ct) => WorldOccupancy.IsOccupiedAsync(_orm, x, y, ct),
+                    cancellationToken);
+                if (cell is null)
                 {
-                    Type = def.Type,
-                    Name = $"{def.Name}·{cell.Value.X},{cell.Value.Y}",
-                    X = cell.Value.X,
-                    Y = cell.Value.Y,
-                    Garrison = def.Garrison,
-                    Kind = OutpostKind.Roaming,
-                    ExpiresAt = now.AddSeconds(lifetime)
-                }).ExecuteAffrowsAsync(cancellationToken);
-                existing++;
+                    break;
+                }
+
+                try
+                {
+                    await _orm.Insert(new OutpostEntity
+                    {
+                        Type = def.Type,
+                        Name = $"{def.Name}·{cell.Value.X},{cell.Value.Y}",
+                        X = cell.Value.X,
+                        Y = cell.Value.Y,
+                        Garrison = def.Garrison,
+                        Kind = OutpostKind.Roaming,
+                        ExpiresAt = now.AddSeconds(lifetime)
+                    }).ExecuteAffrowsAsync(cancellationToken);
+                    existing++;
+                }
+                catch (Exception ex) when (DbErrors.IsUniqueViolation(ex))
+                {
+                }
             }
-            catch (Exception ex) when (DbErrors.IsUniqueViolation(ex))
-            {
-            }
+        }
+        finally
+        {
+            await _orm.Ado.ExecuteNonQueryAsync("SELECT pg_advisory_unlock(" + RoamingLockId + ")");
         }
     }
 

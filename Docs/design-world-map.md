@@ -24,7 +24,11 @@
 
 ## NPC 据点（第 5 步）
 
-启动时若据点数量不足 `WorldMap:OutpostCount`（默认 24），按三种类型尽量均分补齐。
+两类据点共用 `sg_outpost`，用 `kind` 区分。**常驻点规则不变**；流寇是后来加的限时点。
+
+### 常驻（`kind = permanent`）
+
+启动时若常驻数量不足 `WorldMap:OutpostCount`（默认 24），按三种类型尽量均分补齐。只数 `kind = permanent`，不把流寇算进这个配额。
 
 | type | 名称 | 驻军（步兵当量） | `outpostBasePower` | 战利品粮/木/铁/铜 |
 |------|------|------------------|--------------------|-------------------|
@@ -37,8 +41,30 @@
 | 占领 | 第一版 **不占领**；战胜后掠走战利品，据点仍在原格 |
 | 刷新 | 战败后 `garrison = 0`，`recoverAt = now + OutpostRecoverSeconds`（默认 7200）。读取或作为目标时若已到期，按目录恢复满编与战利品 |
 | 名称 | `{名称}·{x},{y}`，如 `村落·12,34` |
+| `expiresAt` | 常驻为 `null` |
 
-表 `sg_outpost`：`id, type, name, x, y, garrison, recover_at`。`(x, y)` 唯一。
+### 流寇（`kind = roaming`）
+
+空地上随机出现的限时据点。到期从地图删掉并腾格；**攻方战胜后也删掉**（不进入 `recoverAt`）。攻方战败则留下残兵，直到到期。
+
+| type | 名称 | 驻军 | `outpostBasePower` | 战利品粮/木/铁/铜 |
+|------|------|------|--------------------|-------------------|
+| `bandit` | 流寇 | 25 | 120 | 100 / 80 / 30 / 20 |
+| `raider` | 马贼 | 50 | 280 | 180 / 120 / 80 / 40 |
+| `warband` | 流寇大营 | 90 | 600 | 280 / 220 / 120 / 60 |
+
+| 项 | 约定 |
+|----|------|
+| 数量 | 存活流寇不足 `WorldMap:RoamingOutpostCount`（默认 8）时，tick 在空地补到该数量；三种类型轮流出 |
+| 寿命 | 生成时 `expiresAt = now + RoamingOutpostLifetimeSeconds`（默认 1800；开发环境 180） |
+| tick | Hangfire 周期 `RoamingOutpostTickMinutes`（默认 1）：先删到期，再补生成。启动补种子之后也会跑一次 |
+| 展示 | `GET /api/world` **不返回** 已到期流寇，并顺手删行，避免占格 |
+| 出征 | 已到期或已删 → `40400`「据点不存在」。行军途中到期 / 被别人打掉：到达后兵力返回，战报「目标据点已消失」，无缴获 |
+| 名称 | `{名称}·{x},{y}`，如 `流寇·18,7` |
+
+表 `sg_outpost`：`id, type, name, x, y, garrison, recover_at, kind, expires_at`。`(x, y)` 仍唯一。`kind`：`permanent = 0`，`roaming = 1`。
+
+`GET /api/world` 的据点多项增加 `kind`、`expiresAt`（常驻可省略 `expiresAt`）。
 
 ## 视野与画布（第 8 步）
 
@@ -58,7 +84,8 @@
     { "id": 1, "name": "张三的城", "x": 42, "y": 87, "owner": "self", "protected": false }
   ],
   "outposts": [
-    { "id": 3, "type": "village", "name": "村落·10,12", "x": 10, "y": 12, "garrison": 40 }
+    { "id": 3, "type": "village", "name": "村落·10,12", "x": 10, "y": 12, "garrison": 40, "kind": "permanent" },
+    { "id": 8, "type": "bandit", "name": "流寇·18,7", "x": 18, "y": 7, "garrison": 25, "kind": "roaming", "expiresAt": "2026-08-20T12:30:00.000Z" }
   ],
   "marches": [
     {

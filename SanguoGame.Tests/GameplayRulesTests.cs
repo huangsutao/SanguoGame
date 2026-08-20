@@ -175,6 +175,19 @@ public class CatalogPlaytestNumbersTests
         Assert.Equal(20, InnerBuildingCatalog.DurationSeconds(drill, 1));
         Assert.Equal(new ResourceAmount(180, 100, 120, 40), InnerBuildingCatalog.CostToReach(drill, 1));
     }
+
+    [Fact]
+    public void RoamingCatalog_HasThreeTypes_AndExpiresByKind()
+    {
+        Assert.Equal(3, OutpostCatalog.Permanent.Count);
+        Assert.Equal(3, OutpostCatalog.Roaming.Count);
+        Assert.Equal(6, OutpostCatalog.All.Count);
+        Assert.NotNull(OutpostCatalog.Find("bandit"));
+        var now = new DateTime(2026, 8, 20, 12, 0, 0, DateTimeKind.Utc);
+        Assert.False(OutpostCatalog.IsExpired(OutpostKind.Permanent, now, now));
+        Assert.False(OutpostCatalog.IsExpired(OutpostKind.Roaming, now.AddMinutes(1), now));
+        Assert.True(OutpostCatalog.IsExpired(OutpostKind.Roaming, now, now));
+    }
 }
 
 public class MarketCatalogTests

@@ -152,6 +152,11 @@ public class Program
                 "ai-tick",
                 job => job.Execute(),
                 $"*/{aiTickMinutes} * * * *");
+            var roamingTickMinutes = Math.Max(1, app.Configuration.GetValue("WorldMap:RoamingOutpostTickMinutes", 1));
+            RecurringJob.AddOrUpdate<RoamingOutpostJob>(
+                "roaming-outpost-tick",
+                job => job.Execute(),
+                $"*/{roamingTickMinutes} * * * *");
         }
 
         app.Run();

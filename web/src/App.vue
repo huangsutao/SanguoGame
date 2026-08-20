@@ -176,6 +176,7 @@ const allianceRoleLabel: Record<string, string> = {
 
 let hub: HubConnection | null = null;
 let tick: number | undefined;
+let lastWorldRefresh = 0;
 
 function fail(err: unknown): void {
   error.value = err instanceof ApiError || err instanceof Error ? err.message : "操作失败";
@@ -407,6 +408,10 @@ onMounted(async () => {
 
   tick = window.setInterval(() => {
     nowMs.value = Date.now();
+    if (tab.value === "map" && hasCity.value && Date.now() - lastWorldRefresh >= 15000) {
+      lastWorldRefresh = Date.now();
+      void loadWorld().catch(() => undefined);
+    }
   }, 1000);
 
   if (!getAccessToken()) {
@@ -454,6 +459,13 @@ watch(hasCity, async (ready) => {
     await connectHub();
   } catch (err) {
     fail(err);
+  }
+});
+
+watch(tab, (value) => {
+  if (value === "map" && hasCity.value) {
+    lastWorldRefresh = Date.now();
+    void loadWorld().catch(fail);
   }
 });
 
@@ -1055,7 +1067,7 @@ async function submitLogout(): Promise<void> {
 
           <section v-if="tab === 'map' && world" class="block">
             <h2>大地图</h2>
-            <p class="hint">拖拽移动，滚轮缩放。金点自己，红点 AI，绿点玩家，方块为 NPC 据点，三角为市集。点击据点/玩家城出征，点击市集兑换。</p>
+            <p class="hint">拖拽移动，滚轮缩放。金点自己，红点 AI，绿点玩家，方块为常驻据点，菱形为限时流寇，三角为市集。点击据点/玩家城出征，点击市集兑换。</p>
             <WorldMap :world="world" @select="onSelectTarget" />
           </section>
 

@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using SanguoGame.Core.Army;
 using SanguoGame.Core.Buildings;
+using SanguoGame.Core.World;
 
 namespace SanguoGame.Server.Contracts;
 
@@ -114,7 +115,9 @@ public sealed record WorldOutpostDto(
     string Name,
     int X,
     int Y,
-    int Garrison);
+    int Garrison,
+    OutpostKind Kind,
+    DateTime? ExpiresAt);
 
 public sealed record WorldOriginDto(int X, int Y);
 

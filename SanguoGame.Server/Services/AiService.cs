@@ -173,7 +173,10 @@ public sealed class AiService
         var now = DateTime.UtcNow;
         var nearbyOutpost = outposts
             .Select(o => new { o, dist = Math.Abs(o.X - city.X) + Math.Abs(o.Y - city.Y) })
-            .Where(x => x.dist is > 0 and <= 40 && (x.o.Garrison > 0 || x.o.RecoverAt is null || x.o.RecoverAt <= now))
+            .Where(x => x.dist is > 0 and <= 40
+                && !OutpostCatalog.IsExpired(x.o.Kind, x.o.ExpiresAt, now)
+                && (x.o.Garrison > 0
+                    || (x.o.Kind == OutpostKind.Permanent && (x.o.RecoverAt is null || x.o.RecoverAt <= now))))
             .OrderBy(x => x.dist)
             .FirstOrDefault();
         if (nearbyOutpost is not null)

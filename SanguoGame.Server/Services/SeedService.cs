@@ -48,13 +48,15 @@ public sealed class SeedService
 
     private async Task EnsureOutpostsAsync(CancellationToken cancellationToken)
     {
-        var existing = (int)await _orm.Select<OutpostEntity>().CountAsync(cancellationToken);
+        var existing = (int)await _orm.Select<OutpostEntity>()
+            .Where(o => o.Kind == OutpostKind.Permanent)
+            .CountAsync(cancellationToken);
         var attempts = 0;
         var maxAttempts = Math.Max(_map.OutpostCount * 4, 8);
         while (existing < _map.OutpostCount && attempts < maxAttempts)
         {
             attempts++;
-            var def = OutpostCatalog.All[existing % OutpostCatalog.All.Count];
+            var def = OutpostCatalog.Permanent[existing % OutpostCatalog.Permanent.Count];
             var cell = await MapPlacement.TryPickEmptyCellAsync(
                 _map.Width,
                 _map.Height,
@@ -75,7 +77,8 @@ public sealed class SeedService
                     Name = $"{def.Name}·{cell.Value.X},{cell.Value.Y}",
                     X = cell.Value.X,
                     Y = cell.Value.Y,
-                    Garrison = def.Garrison
+                    Garrison = def.Garrison,
+                    Kind = OutpostKind.Permanent
                 }).ExecuteAffrowsAsync(cancellationToken);
                 existing++;
             }

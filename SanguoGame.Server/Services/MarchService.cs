@@ -211,8 +211,13 @@ public sealed class MarchService
                 .ForUpdate()
                 .Where(o => o.Id == current.TargetId)
                 .FirstAsync(ct);
-            if (outpost is null)
+            if (outpost is null || OutpostCatalog.IsExpired(outpost.Kind, outpost.ExpiresAt, DateTime.UtcNow))
             {
+                if (outpost is not null)
+                {
+                    await _orm.Delete<OutpostEntity>().WithTransaction(transaction).Where(o => o.Id == outpost.Id).ExecuteAffrowsAsync(ct);
+                }
+
                 return await FinishEmptyAsync(transaction, current, attacker, "目标据点已消失", ct);
             }
 
@@ -238,23 +243,31 @@ public sealed class MarchService
             var loot = ResourceAmount.Zero;
             if (outcome.AttackerWon)
             {
-                outpost.Garrison = 0;
-                outpost.RecoverAt = DateTime.UtcNow.AddSeconds(_map.OutpostRecoverSeconds);
                 loot = Deposit(attacker, def.Loot, InnerBuildingCatalog.ResourceCap(warehouse));
-            }
-            else
-            {
-                outpost.Garrison = outcome.DefenderAfter.Infantry;
+                ReturnTroops(attacker, outcome.AttackerAfter, InnerBuildingCatalog.TroopCap(barracks));
+                await SaveCityAsync(transaction, attacker, ct);
+                if (outpost.Kind == OutpostKind.Roaming)
+                {
+                    await _orm.Delete<OutpostEntity>().WithTransaction(transaction).Where(o => o.Id == outpost.Id).ExecuteAffrowsAsync(ct);
+                }
+                else
+                {
+                    outpost.Garrison = 0;
+                    outpost.RecoverAt = DateTime.UtcNow.AddSeconds(_map.OutpostRecoverSeconds);
+                    await _orm.Update<OutpostEntity>().WithTransaction(transaction).SetSource(outpost).ExecuteAffrowsAsync(ct);
+                }
+
+                var summary = $"攻克{outpost.Name}，缴获粮{loot.Grain} 木{loot.Wood} 铁{loot.Iron} 铜{loot.Copper}";
+                return await PersistAsync(
+                    transaction, current, outcome, loot, summary, attacker.CharacterId, null, ct);
             }
 
+            outpost.Garrison = outcome.DefenderAfter.Infantry;
             ReturnTroops(attacker, outcome.AttackerAfter, InnerBuildingCatalog.TroopCap(barracks));
             await SaveCityAsync(transaction, attacker, ct);
             await _orm.Update<OutpostEntity>().WithTransaction(transaction).SetSource(outpost).ExecuteAffrowsAsync(ct);
-            var summary = outcome.AttackerWon
-                ? $"攻克{outpost.Name}，缴获粮{loot.Grain} 木{loot.Wood} 铁{loot.Iron} 铜{loot.Copper}"
-                : $"攻打{outpost.Name}失利";
             return await PersistAsync(
-                transaction, current, outcome, loot, summary, attacker.CharacterId, null, ct);
+                transaction, current, outcome, loot, $"攻打{outpost.Name}失利", attacker.CharacterId, null, ct);
         }, cancellationToken);
     }
 
@@ -349,7 +362,7 @@ public sealed class MarchService
         if (targetType == MarchTargetType.Outpost)
         {
             var outpost = await _orm.Select<OutpostEntity>().Where(o => o.Id == targetId).FirstAsync(cancellationToken);
-            if (outpost is null)
+            if (outpost is null || OutpostCatalog.IsExpired(outpost.Kind, outpost.ExpiresAt, DateTime.UtcNow))
             {
                 throw new BizException(ErrorCodes.NotFound, "据点不存在");
             }
@@ -401,6 +414,11 @@ public sealed class MarchService
 
     private static void EnsureRecovered(OutpostEntity outpost, DateTime now)
     {
+        if (outpost.Kind != OutpostKind.Permanent)
+        {
+            return;
+        }
+
         if (outpost.RecoverAt is { } until && until <= now)
         {
             var def = OutpostCatalog.Require(outpost.Type);

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using SanguoGame.Core.Army;
 using SanguoGame.Core.Market;
 using SanguoGame.Core.World;
+using SanguoGame.Infrastructure;
 using SanguoGame.Infrastructure.Entities;
 using SanguoGame.Server.Contracts;
 
@@ -39,6 +40,8 @@ public sealed class WorldService
         }
 
         var now = DateTime.UtcNow;
+        await PurgeExpiredRoamingAsync(now, cancellationToken);
+
         var cityRows = await _orm.Select<CityEntity>().ToListAsync(cancellationToken);
         var characterOwners = (await _orm.Select<CharacterEntity>().ToListAsync(cancellationToken))
             .ToDictionary(c => c.Id, c => c.AccountId);
@@ -66,12 +69,12 @@ public sealed class WorldService
         var outpostDtos = outposts.Select(o =>
         {
             var garrison = o.Garrison;
-            if (o.RecoverAt is { } until && until <= now)
+            if (o.Kind == OutpostKind.Permanent && o.RecoverAt is { } until && until <= now)
             {
                 garrison = OutpostCatalog.Require(o.Type).Garrison;
             }
 
-            return new WorldOutpostDto(o.Id, o.Type, o.Name, o.X, o.Y, garrison);
+            return new WorldOutpostDto(o.Id, o.Type, o.Name, o.X, o.Y, garrison, o.Kind, o.ExpiresAt);
         }).ToList();
 
         var marches = await _orm.Select<MarchEntity>()
@@ -108,7 +111,7 @@ public sealed class WorldService
             var due = await _orm.Select<OutpostEntity>()
                 .WithTransaction(transaction)
                 .ForUpdate()
-                .Where(o => o.RecoverAt != null && o.RecoverAt <= now)
+                .Where(o => o.Kind == OutpostKind.Permanent && o.RecoverAt != null && o.RecoverAt <= now)
                 .ToListAsync(cancellationToken);
             foreach (var outpost in due)
             {
@@ -130,4 +133,55 @@ public sealed class WorldService
             throw;
         }
     }
+
+    public async Task TickRoamingAsync(CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        await PurgeExpiredRoamingAsync(now, cancellationToken);
+
+        var existing = (int)await _orm.Select<OutpostEntity>()
+            .Where(o => o.Kind == OutpostKind.Roaming)
+            .CountAsync(cancellationToken);
+        var attempts = 0;
+        var maxAttempts = Math.Max(_map.RoamingOutpostCount * 4, 8);
+        var lifetime = Math.Max(30, _map.RoamingOutpostLifetimeSeconds);
+        while (existing < _map.RoamingOutpostCount && attempts < maxAttempts)
+        {
+            attempts++;
+            var def = OutpostCatalog.Roaming[existing % OutpostCatalog.Roaming.Count];
+            var cell = await MapPlacement.TryPickEmptyCellAsync(
+                _map.Width,
+                _map.Height,
+                _map.PlacementMaxAttempts,
+                (x, y, ct) => WorldOccupancy.IsOccupiedAsync(_orm, x, y, ct),
+                cancellationToken);
+            if (cell is null)
+            {
+                break;
+            }
+
+            try
+            {
+                await _orm.Insert(new OutpostEntity
+                {
+                    Type = def.Type,
+                    Name = $"{def.Name}·{cell.Value.X},{cell.Value.Y}",
+                    X = cell.Value.X,
+                    Y = cell.Value.Y,
+                    Garrison = def.Garrison,
+                    Kind = OutpostKind.Roaming,
+                    ExpiresAt = now.AddSeconds(lifetime)
+                }).ExecuteAffrowsAsync(cancellationToken);
+                existing++;
+            }
+            catch (Exception ex) when (DbErrors.IsUniqueViolation(ex))
+            {
+            }
+        }
+    }
+
+    private async Task PurgeExpiredRoamingAsync(DateTime now, CancellationToken cancellationToken) =>
+        await _orm.Delete<OutpostEntity>()
+            .Where(o => o.Kind == OutpostKind.Roaming && o.ExpiresAt != null && o.ExpiresAt <= now)
+            .ExecuteAffrowsAsync(cancellationToken);
 }

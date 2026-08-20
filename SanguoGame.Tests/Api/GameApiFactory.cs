@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using SanguoGame.Core.Army;
 using SanguoGame.Core.Buildings;
 using SanguoGame.Core.Market;
+using SanguoGame.Core.World;
 using SanguoGame.Infrastructure.Entities;
 using SanguoGame.Server;
 using SanguoGame.Server.Services;
@@ -81,6 +82,7 @@ public sealed class GameApiFactory : WebApplicationFactory<Program>, IAsyncLifet
         Environment.SetEnvironmentVariable("Testing__DisableBackgroundJobs", "true");
         Environment.SetEnvironmentVariable("WorldMap__AiCityCount", "0");
         Environment.SetEnvironmentVariable("WorldMap__OutpostCount", "0");
+        Environment.SetEnvironmentVariable("WorldMap__RoamingOutpostCount", "0");
         Environment.SetEnvironmentVariable("WorldMap__MarketCount", "0");
         Environment.SetEnvironmentVariable("WorldMap__Width", "40");
         Environment.SetEnvironmentVariable("WorldMap__Height", "40");
@@ -139,6 +141,8 @@ public sealed class GameApiFactory : WebApplicationFactory<Program>, IAsyncLifet
                 ["WorldMap:Height"] = "40",
                 ["WorldMap:PlacementMaxAttempts"] = "64",
                 ["WorldMap:OutpostCount"] = "0",
+                ["WorldMap:RoamingOutpostCount"] = "0",
+                ["WorldMap:RoamingOutpostLifetimeSeconds"] = "1800",
                 ["WorldMap:MarketCount"] = "0",
                 ["WorldMap:AiCityCount"] = "0",
                 ["WorldMap:SecondsPerTile"] = "1",
@@ -249,8 +253,32 @@ public sealed class GameApiFactory : WebApplicationFactory<Program>, IAsyncLifet
             Name = $"测试村·{x},{y}",
             X = x,
             Y = y,
-            Garrison = garrison
+            Garrison = garrison,
+            Kind = OutpostKind.Permanent
         }).ExecuteIdentityAsync();
+    }
+
+    public async Task<long> InsertRoamingOutpostAsync(int x, int y, DateTime expiresAt, int garrison = 25)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var orm = scope.ServiceProvider.GetRequiredService<IFreeSql>();
+        return await orm.Insert(new OutpostEntity
+        {
+            Type = "bandit",
+            Name = $"测试流寇·{x},{y}",
+            X = x,
+            Y = y,
+            Garrison = garrison,
+            Kind = OutpostKind.Roaming,
+            ExpiresAt = expiresAt
+        }).ExecuteIdentityAsync();
+    }
+
+    public async Task TickRoamingOutpostsAsync()
+    {
+        await using var scope = Services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<WorldService>()
+            .TickRoamingAsync(CancellationToken.None);
     }
 
     public async Task<(int X, int Y)> PickEmptyCellAsync(int nearX, int nearY)

@@ -10,7 +10,7 @@
 
 | 做 | 不做 |
 |----|------|
-| 城内 5 种建筑：主殿 / 民居 / 仓库 / 书院 / 兵营 | 城墙、城外田 |
+| 城内 5 种建筑：主殿 / 民居 / 仓库 / 书院 / 兵营（第 11 步另加分科） | 城墙、城外田 |
 | 全城 **一条** 建造队列（串行） | 多队列、VIP 加队列 |
 | 扣库存、写 `finishAt`、到点升等级 | 取消建造 / 加速（第一版） |
 | 库存四种资源；建城送初始量 | 资源产出与收取（第 3 步） |
@@ -31,6 +31,7 @@ City
       ├─ house    民居   内政
       ├─ warehouse 仓库  内政
       ├─ academy  书院   科技
+      ├─ drillHall / defenseHall / resourceHall  分科科技（第 11 步）
       └─ barracks 兵营   军事
 ```
 
@@ -82,6 +83,9 @@ City
 | `house` | 民居 | `civil` | 10 | 主殿 ≥ 1 |
 | `warehouse` | 仓库 | `civil` | 10 | 主殿 ≥ 1 |
 | `academy` | 书院 | `tech` | 10 | 主殿 ≥ 2 |
+| `drillHall` | 演武堂 | `tech` | 10 | 主殿 ≥ 3 且书院 ≥ 1（第 11 步） |
+| `defenseHall` | 城防署 | `tech` | 10 | 主殿 ≥ 3 且书院 ≥ 1（第 11 步） |
+| `resourceHall` | 司农院 | `tech` | 10 | 主殿 ≥ 3 且书院 ≥ 1（第 11 步） |
 | `barracks` | 兵营 | `military` | 10 | 主殿 ≥ 2 |
 
 前置看的是 **已生效的 `level`**，不是进行中的 `targetLevel`。主殿在升 2 级途中，兵营仍不可建。
@@ -93,8 +97,11 @@ City
 | `palace` | 无数值；只做解锁门槛 |
 | `house` | `populationCap = 50 + 100 * level`（本步只返回，不消耗人口） |
 | `warehouse` | `resourceCap = 8000 + 4000 * level`（每种资源同一上限） |
-| `academy` | 预留 `researchSpeedBonus`（本步恒 0，不做科研指令） |
-| `barracks` | 预留造兵（第 5 步） |
+| `academy` | `attackBonusPercent = 2 * level`（攻方战力）；分科科技见 [科技](design-tech.md) |
+| `drillHall` | `troopPowerBonusPercent`、`recruitDiscountPercent`，见 [科技](design-tech.md) |
+| `defenseHall` | `wallDefenseFlat`、陷阱加成，见 [科技](design-tech.md) |
+| `resourceHall` | `productionBonusPercent`，见 [科技](design-tech.md) |
+| `barracks` | `troopCap = 30 + 40 * level` |
 
 ## 时长与消耗
 
@@ -113,6 +120,9 @@ cost[res]       = ceil(baseCost[res]       * 1.5^(L - 1))
 | house | 10 | 120 | 80 | 20 | 10 |
 | warehouse | 12 | 100 | 160 | 40 | 20 |
 | academy | 20 | 150 | 150 | 60 | 80 |
+| drillHall | 20 | 180 | 100 | 120 | 40 |
+| defenseHall | 20 | 120 | 180 | 80 | 30 |
+| resourceHall | 18 | 160 | 140 | 40 | 40 |
 | barracks | 20 | 180 | 100 | 120 | 30 |
 
 数值放 **Core 配置表**（代码常量或 JSON），不要写死在 Controller。改时长不必改协议。第一版联调已把 `baseDurationSeconds` 缩短约一半，方便一局内升到兵营。
@@ -184,7 +194,7 @@ Hangfire 失败允许重试；业务必须幂等。Job 参数用 `cityId + build
 }
 ```
 
-`buildings` **固定 5 项**（目录全量）。单项：
+`buildings` **固定目录全量**（第 2 步 5 项；第 11 步起 8 项）。单项：
 
 ```json
 {

@@ -56,6 +56,7 @@ public sealed class WallService
             def => byType.TryGetValue(def.Type, out var entity) ? entity.Level : 0,
             StringComparer.OrdinalIgnoreCase);
         var trapLevel = levels.TryGetValue("trap", out var trap) ? trap : 0;
+        var defenseHallLevel = byType.TryGetValue(TechBonuses.DefenseHall, out var hall) ? hall.Level : 0;
 
         BuildingQueueDto? queue = null;
         if (queueRow is { TargetLevel: int qLevel, FinishAt: { } qFinish })
@@ -121,8 +122,8 @@ public sealed class WallService
             DateTime.UtcNow,
             new ResourceDto(city.Grain, city.Wood, city.Iron, city.Copper),
             InnerBuildingCatalog.ResourceCap(warehouseLevel),
-            WallCatalog.WallDefense(levels),
-            WallCatalog.TrapBonus(trapLevel),
+            WallCatalog.WallDefense(levels, defenseHallLevel),
+            WallCatalog.TrapBonus(trapLevel, defenseHallLevel),
             queue,
             walls);
     }

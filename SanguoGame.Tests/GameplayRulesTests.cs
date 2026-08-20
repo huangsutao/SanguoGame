@@ -77,6 +77,23 @@ public class PvpLootTests
         Assert.Equal(2000, result.Actual.Grain);
         Assert.Equal(18_000, result.DefenderStockAfter.Grain);
     }
+
+    [Fact]
+    public void ProductionBonus_UsesBoostedFieldRate()
+    {
+        var lastCollected = Now.AddHours(-1);
+        var result = PvpLoot.Compute(
+            defenderStock: ResourceAmount.Zero,
+            attackerStock: ResourceAmount.Zero,
+            attackerCap: 20_000,
+            fields: [new FieldLootInput("farm", 1, lastCollected)],
+            now: Now,
+            productionPercent: 5);
+
+        Assert.Equal(315, result.Actual.Grain);
+        var farm = Assert.Single(result.FieldUpdates);
+        Assert.Equal(315, FieldProduction.Pending(630, 1575, farm.LastCollectedAt, Now));
+    }
 }
 
 public class FieldProductionTests
@@ -117,6 +134,14 @@ public class BattleCalculatorTests
         Assert.True(a.AttackerAfter.Infantry <= a.AttackerBefore.Infantry);
         Assert.True(a.DefenderAfter.Infantry <= a.DefenderBefore.Infantry);
     }
+
+    [Fact]
+    public void TroopPowerPercent_RaisesAttackerPowerBeforeAcademy()
+    {
+        var troops = new TroopCount(10, 0, 0);
+        Assert.Equal(100, BattleCalculator.Power(troops));
+        Assert.Equal(103, TechBonuses.ApplyPercent(100, 3));
+    }
 }
 
 public class CatalogPlaytestNumbersTests
@@ -137,6 +162,18 @@ public class CatalogPlaytestNumbersTests
         Assert.NotNull(farm);
         Assert.Equal(600, farm.RatePerHour(1));
         Assert.Equal(1500, farm.FieldCap(1));
+    }
+
+    [Fact]
+    public void TechHalls_AreInCatalog_WithAcademyPrerequisite()
+    {
+        Assert.Equal(8, InnerBuildingCatalog.All.Count);
+        var drill = InnerBuildingCatalog.Find("drillHall");
+        Assert.NotNull(drill);
+        Assert.Equal(3, drill.RequirePalaceLevel);
+        Assert.Equal(1, drill.RequireAcademyLevel);
+        Assert.Equal(20, InnerBuildingCatalog.DurationSeconds(drill, 1));
+        Assert.Equal(new ResourceAmount(180, 100, 120, 40), InnerBuildingCatalog.CostToReach(drill, 1));
     }
 }
 
@@ -178,5 +215,42 @@ public class MapPlacementTests
         var ok = MapPlacement.TryPickEmptyCell(2, 2, 32, (x, y) => occupied.Contains((x, y)), out var x, out var y, new Random(1));
         Assert.True(ok);
         Assert.DoesNotContain((x, y), occupied);
+    }
+}
+
+public class TechBonusesTests
+{
+    [Fact]
+    public void DrillHall_GivesThreePercentPowerAndTwoPercentRecruitDiscount()
+    {
+        Assert.Equal(3, TechBonuses.TroopPowerPercent(1));
+        Assert.Equal(2, TechBonuses.RecruitDiscountPercent(1));
+        Assert.Equal(50, TechBonuses.RecruitDiscountPercent(40));
+        Assert.Equal(98, TechBonuses.Discount(new ResourceAmount(100, 25, 50, 0), 2).Grain);
+        Assert.Equal(24, TechBonuses.Discount(new ResourceAmount(100, 25, 50, 0), 2).Wood);
+    }
+
+    [Fact]
+    public void ResourceHall_BoostsFarmSixHundredToSixThirty()
+    {
+        var farm = OuterFieldCatalog.Find("farm");
+        Assert.NotNull(farm);
+        Assert.Equal(5, TechBonuses.ProductionPercent(1));
+        Assert.Equal(630, TechBonuses.BoostedRate(farm, 1, 1));
+        Assert.Equal(1575, TechBonuses.BoostedCap(farm, 1, 1));
+    }
+
+    [Fact]
+    public void DefenseHall_AddsTwoWallDefense()
+    {
+        var levels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["arrowTower"] = 1,
+            ["gate"] = 0,
+            ["trap"] = 0
+        };
+        Assert.Equal(8, WallCatalog.WallDefense(levels));
+        Assert.Equal(10, WallCatalog.WallDefense(levels, 1));
+        Assert.Equal(0.03, WallCatalog.TrapBonus(1, 1), 3);
     }
 }

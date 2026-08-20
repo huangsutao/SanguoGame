@@ -50,7 +50,7 @@ City
 wallDefense = 8 * arrowTower.level + 6 * gate.level
 ```
 
-未建按 0。战斗公式见 [行军战斗](design-march-battle.md)：守方战力加 `wallDefense * 10`；攻方伤亡率加 `trapBonus`。
+未建按 0。城防署把 `wallDefenseFlat = 2 * L` 加在这个和上，见 [科技](design-tech.md)。战斗公式见 [行军战斗](design-march-battle.md)：守方战力加 `wallDefense * 10`；攻方伤亡率加 `trapBonus`。
 
 ## 时长与消耗
 
@@ -104,7 +104,7 @@ cost[res]       = ceil(baseCost[res]       * 1.5^(L - 1))
 
 未建当 0→1。成功 `data` 与 `GET /api/walls` 同一形状。到点推已有 `BuildComplete`（`buildingType` 为城防 type）。
 
-`GET /api/buildings` 仍只返回城内 5 种，不要把城防混进城内页。
+`GET /api/buildings` 仍只返回城内目录（第 11 步起 8 种），不要把城防混进城内页。
 
 ## 网页
 

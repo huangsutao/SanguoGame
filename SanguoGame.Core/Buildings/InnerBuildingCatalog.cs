@@ -11,6 +11,9 @@ public static class InnerBuildingCatalog
         new("house", "民居", BuildingCategory.Civil, 10, 1, 10, new ResourceAmount(120, 80, 20, 10)),
         new("warehouse", "仓库", BuildingCategory.Civil, 10, 1, 12, new ResourceAmount(100, 160, 40, 20)),
         new("academy", "书院", BuildingCategory.Tech, 10, 2, 20, new ResourceAmount(150, 150, 60, 80)),
+        new("drillHall", "演武堂", BuildingCategory.Tech, 10, 3, 20, new ResourceAmount(180, 100, 120, 40), 1),
+        new("defenseHall", "城防署", BuildingCategory.Tech, 10, 3, 20, new ResourceAmount(120, 180, 80, 30), 1),
+        new("resourceHall", "司农院", BuildingCategory.Tech, 10, 3, 18, new ResourceAmount(160, 140, 40, 40), 1),
         new("barracks", "兵营", BuildingCategory.Military, 10, 2, 20, new ResourceAmount(180, 100, 120, 30))
     ];
 

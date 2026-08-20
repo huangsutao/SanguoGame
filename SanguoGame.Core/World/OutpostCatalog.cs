@@ -34,6 +34,7 @@ public static class AiTemplates
 
     public static IReadOnlyList<string> UpgradeOrder { get; } =
     [
-        "palace", "house", "warehouse", "barracks", "farm", "lumber", "arrowTower", "gate"
+        "palace", "house", "warehouse", "barracks", "farm", "lumber",
+        "academy", "drillHall", "defenseHall", "resourceHall", "arrowTower", "gate"
     ];
 }

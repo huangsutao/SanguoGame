@@ -96,7 +96,9 @@ public sealed record BattleInput(
     int WallDefense,
     int OutpostBasePower,
     double TrapBonus,
-    int Seed);
+    int Seed,
+    int AttackerPowerPercent = 0,
+    int DefenderPowerPercent = 0);
 
 public sealed record BattleOutcome(
     bool AttackerWon,
@@ -114,8 +116,10 @@ public static class BattleCalculator
     public static BattleOutcome Resolve(BattleInput input)
     {
         var rng = new Random(input.Seed);
-        var atk = Power(input.Attacker) * (100 + Math.Max(0, input.AcademyLevel) * 2) / 100d;
-        var def = Power(input.Defender) + input.WallDefense * 10 + Math.Max(0, input.OutpostBasePower);
+        var atkPower = ApplyPowerPercent(Power(input.Attacker), input.AttackerPowerPercent);
+        var defPower = ApplyPowerPercent(Power(input.Defender), input.DefenderPowerPercent);
+        var atk = atkPower * (100 + Math.Max(0, input.AcademyLevel) * 2) / 100d;
+        var def = defPower + input.WallDefense * 10 + Math.Max(0, input.OutpostBasePower);
         var atkRoll = atk * (90 + rng.Next(0, 21)) / 100d;
         var defRoll = def * (90 + rng.Next(0, 21)) / 100d;
         var won = atkRoll >= defRoll;
@@ -136,6 +140,9 @@ public static class BattleCalculator
             input.Defender.RemainingAfterLoss(defLoss),
             input.Seed);
     }
+
+    private static int ApplyPowerPercent(int power, int percent) =>
+        SanguoGame.Core.Buildings.TechBonuses.ApplyPercent(power, percent);
 }
 
 public static class MarchTiming

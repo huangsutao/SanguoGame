@@ -24,7 +24,8 @@ public static class PvpLoot
         ResourceAmount attackerStock,
         int attackerCap,
         IReadOnlyList<FieldLootInput> fields,
-        DateTime now)
+        DateTime now,
+        int productionPercent = 0)
     {
         var byType = fields.ToDictionary(f => f.Type, StringComparer.OrdinalIgnoreCase);
         var space = new ResourceAmount(
@@ -44,8 +45,9 @@ public static class PvpLoot
                 continue;
             }
 
-            var rate = def.RatePerHour(field.Level);
-            var pending = FieldProduction.Pending(rate, def.FieldCap(field.Level), field.LastCollectedAt, now);
+            var rate = TechBonuses.ApplyPercent(def.RatePerHour(field.Level), productionPercent);
+            var fieldCap = TechBonuses.ApplyPercent(def.FieldCap(field.Level), productionPercent);
+            var pending = FieldProduction.Pending(rate, fieldCap, field.LastCollectedAt, now);
             var maxTake = (int)Math.Floor(pending * FieldTakeRatio);
             var fromField = Math.Min(maxTake, space.Get(def.Resource));
             var leftover = pending - fromField;

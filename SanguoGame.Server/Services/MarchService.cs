@@ -220,9 +220,10 @@ public sealed class MarchService
             var attackerTroops = new TroopCount(current.Infantry, current.Archer, current.Cavalry);
             var defenderTroops = new TroopCount(outpost.Garrison, 0, 0);
             var buildings = await LoadBuildingsAsync(transaction, attacker.Id, ct);
-            var academy = buildings.FirstOrDefault(b => b.Type == "academy")?.Level ?? 0;
-            var warehouse = buildings.FirstOrDefault(b => b.Type == "warehouse")?.Level ?? 0;
-            var barracks = buildings.FirstOrDefault(b => b.Type == "barracks")?.Level ?? 0;
+            var academy = CityStats.BuildingLevel(buildings, "academy");
+            var warehouse = CityStats.BuildingLevel(buildings, "warehouse");
+            var barracks = CityStats.BuildingLevel(buildings, "barracks");
+            var drillHall = CityStats.BuildingLevel(buildings, TechBonuses.DrillHall);
             var def = OutpostCatalog.Require(outpost.Type);
             var outcome = BattleCalculator.Resolve(new BattleInput(
                 attackerTroops,
@@ -231,7 +232,8 @@ public sealed class MarchService
                 0,
                 def.BasePower,
                 0,
-                SeedOf(current.Id)));
+                SeedOf(current.Id),
+                TechBonuses.TroopPowerPercent(drillHall)));
 
             var loot = ResourceAmount.Zero;
             if (outcome.AttackerWon)
@@ -289,13 +291,13 @@ public sealed class MarchService
             }
 
             var defBuildings = await LoadBuildingsAsync(transaction, defender.Id, ct);
-            var academy = atkBuildings.FirstOrDefault(b => b.Type == "academy")?.Level ?? 0;
-            var atkWarehouse = atkBuildings.FirstOrDefault(b => b.Type == "warehouse")?.Level ?? 0;
-            var defBarracks = defBuildings.FirstOrDefault(b => b.Type == "barracks")?.Level ?? 0;
-            var defLevels = WallCatalog.All.ToDictionary(
-                w => w.Type,
-                w => defBuildings.FirstOrDefault(b => b.Type == w.Type)?.Level ?? 0,
-                StringComparer.OrdinalIgnoreCase);
+            var academy = CityStats.BuildingLevel(atkBuildings, "academy");
+            var atkWarehouse = CityStats.BuildingLevel(atkBuildings, "warehouse");
+            var atkDrill = CityStats.BuildingLevel(atkBuildings, TechBonuses.DrillHall);
+            var defBarracks = CityStats.BuildingLevel(defBuildings, "barracks");
+            var defDrill = CityStats.BuildingLevel(defBuildings, TechBonuses.DrillHall);
+            var defDefenseHall = CityStats.BuildingLevel(defBuildings, TechBonuses.DefenseHall);
+            var defLevels = CityStats.WallLevels(defBuildings);
             var trapLevel = defLevels.TryGetValue("trap", out var trap) ? trap : 0;
             var attackerTroops = new TroopCount(current.Infantry, current.Archer, current.Cavalry);
             var defenderTroops = CityStats.Troops(defender);
@@ -303,10 +305,12 @@ public sealed class MarchService
                 attackerTroops,
                 defenderTroops,
                 academy,
-                WallCatalog.WallDefense(defLevels),
+                WallCatalog.WallDefense(defLevels, defDefenseHall),
                 0,
-                WallCatalog.TrapBonus(trapLevel),
-                SeedOf(current.Id)));
+                WallCatalog.TrapBonus(trapLevel, defDefenseHall),
+                SeedOf(current.Id),
+                TechBonuses.TroopPowerPercent(atkDrill),
+                TechBonuses.TroopPowerPercent(defDrill)));
 
             var loot = ResourceAmount.Zero;
             if (outcome.AttackerWon)
@@ -424,12 +428,14 @@ public sealed class MarchService
             fields.Add(new FieldLootInput(def.Type, entity.Level, entity.LastCollectedAt));
         }
 
+        var hallLevel = byType.TryGetValue(TechBonuses.ResourceHall, out var hall) ? hall.Level : 0;
         var result = PvpLoot.Compute(
             CityStats.Stock(defender),
             CityStats.Stock(attacker),
             attackerCap,
             fields,
-            now);
+            now,
+            TechBonuses.ProductionPercent(hallLevel));
         CityStats.ApplyStock(attacker, result.AttackerStockAfter);
         CityStats.ApplyStock(defender, result.DefenderStockAfter);
         foreach (var update in result.FieldUpdates)

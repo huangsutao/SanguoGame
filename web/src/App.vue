@@ -127,7 +127,9 @@ const recruitCostText = computed(() => {
     return "";
   }
   const c = def.unitCost;
-  return `消耗 粮${c.grain * n} 木${c.wood * n} 铁${c.iron * n} 铜${c.copper * n}（兵营 ≥ ${def.requireBarracksLevel}）`;
+  const p = army.value?.recruitDiscountPercent ?? 0;
+  const hint = p > 0 ? `，征兵减免 ${p}%` : "";
+  return `消耗 粮${c.grain * n} 木${c.wood * n} 铁${c.iron * n} 铜${c.copper * n}（兵营 ≥ ${def.requireBarracksLevel}${hint}）`;
 });
 
 const selectedMarket = computed(() =>
@@ -212,12 +214,37 @@ function blockedText(reason?: string): string {
     case "maxLevel":
       return "已满级";
     case "prerequisite":
-      return "主殿等级不足";
+      return "前置未满足";
     case "resources":
       return "资源不足";
     default:
       return "";
   }
+}
+
+function effectsText(effects?: Record<string, number>): string {
+  if (!effects) {
+    return "";
+  }
+  const labels: Record<string, [string, "percent" | "flat"]> = {
+    populationCap: ["人口上限", "flat"],
+    resourceCap: ["仓库上限", "flat"],
+    attackBonusPercent: ["攻方战力", "percent"],
+    troopPowerBonusPercent: ["兵力战力", "percent"],
+    recruitDiscountPercent: ["征兵减免", "percent"],
+    wallDefenseFlat: ["城防", "flat"],
+    trapBonusPercent: ["陷阱", "percent"],
+    productionBonusPercent: ["田产出", "percent"],
+    troopCap: ["带兵上限", "flat"],
+    wallDefense: ["城防", "flat"],
+    trapBonus: ["陷阱", "percent"]
+  };
+  return Object.entries(effects)
+    .map(([key, value]) => {
+      const [name, kind] = labels[key] ?? [key, "flat"];
+      return kind === "percent" ? `${name}+${value}%` : `${name}+${value}`;
+    })
+    .join(" · ");
 }
 
 function costText(next?: BuildingCostDto): string {
@@ -892,6 +919,7 @@ async function submitLogout(): Promise<void> {
                 <div>
                   <strong>{{ item.name }}</strong>
                   <span class="meta">{{ item.level }} / {{ item.maxLevel }} 级</span>
+                  <span v-if="effectsText(item.effects)" class="hint">{{ effectsText(item.effects) }}</span>
                   <span v-if="item.status === 'upgrading'" class="hint">
                     升级中 {{ remainText(item.finishAt) }}
                   </span>
@@ -963,6 +991,7 @@ async function submitLogout(): Promise<void> {
                 <div>
                   <strong>{{ item.name }}</strong>
                   <span class="meta">{{ item.level }} / {{ item.maxLevel }} 级</span>
+                  <span v-if="effectsText(item.effects)" class="hint">{{ effectsText(item.effects) }}</span>
                   <span v-if="item.status === 'upgrading'" class="hint">
                     升级中 {{ remainText(item.finishAt) }}
                   </span>
@@ -986,7 +1015,8 @@ async function submitLogout(): Promise<void> {
             <h2>军队</h2>
             <p class="res">
               步 {{ army.troops.infantry }} / 弓 {{ army.troops.archer }} / 骑 {{ army.troops.cavalry }} （上限
-              {{ army.troopCap }}，兵营 {{ army.barracksLevel }} 级，城防 {{ army.wallDefense }}）
+              {{ army.troopCap }}，兵营 {{ army.barracksLevel }} 级，城防 {{ army.wallDefense }}
+              <template v-if="army.troopPowerBonusPercent">，兵力战力+{{ army.troopPowerBonusPercent }}%</template>）
             </p>
             <div class="form inline">
               <label>

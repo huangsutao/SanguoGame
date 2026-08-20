@@ -63,6 +63,8 @@ ratePerHour = baseRatePerHour * L
 fieldCap    = baseFieldCap * L
 ```
 
+司农院加成见 [科技](design-tech.md)：速率与田容再乘 `(100 + 5 * resourceHall.level) / 100` 后取整。列表、收取、被掠用同一套数。
+
 | type | 名称 | 产出 | 1 级每小时 | 1 级田上容量 |
 |------|------|------|------------|--------------|
 | `farm` | 良田 | `grain` | 600 | 1500 |
@@ -216,7 +218,7 @@ cost[res]       = ceil(baseCost[res]       * 1.5^(L - 1))
 | 已有 `type / level / status / target_level / finish_at` | 田与城内共用队列 |
 | `last_collected_at` | 城内建筑保持 `null`；田在首次建成后必有值 |
 
-`uk_building_city_type`、`uk_building_city_queue` 不变。`GET /api/buildings` 仍只返回城内 5 种，不要把田混进城内页。
+`GET /api/buildings` 仍只返回城内目录（第 11 步起 8 种），不要把田混进城内页。
 
 ## 网页
 

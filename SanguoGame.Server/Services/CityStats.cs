@@ -56,4 +56,13 @@ internal static class CityStats
 
     public static bool IsProtected(CityEntity city, DateTime now) =>
         city.ProtectionUntil is { } until && until > now;
+
+    public static int BuildingLevel(IEnumerable<BuildingEntity> rows, string type) =>
+        rows.FirstOrDefault(b => b.Type.Equals(type, StringComparison.OrdinalIgnoreCase))?.Level ?? 0;
+
+    public static Dictionary<string, int> WallLevels(IEnumerable<BuildingEntity> rows) =>
+        WallCatalog.All.ToDictionary(
+            def => def.Type,
+            def => BuildingLevel(rows, def.Type),
+            StringComparer.OrdinalIgnoreCase);
 }

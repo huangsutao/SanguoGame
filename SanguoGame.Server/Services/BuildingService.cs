@@ -71,6 +71,12 @@ public sealed class BuildingService
                 throw new BizException(ErrorCodes.BuildingPrerequisite, $"需要主殿 {def.RequirePalaceLevel} 级");
             }
 
+            var academyLevel = byType.TryGetValue("academy", out var academy) ? academy.Level : 0;
+            if (academyLevel < def.RequireAcademyLevel)
+            {
+                throw new BizException(ErrorCodes.BuildingPrerequisite, $"需要书院 {def.RequireAcademyLevel} 级");
+            }
+
             var targetLevel = level + 1;
             var cost = InnerBuildingCatalog.CostToReach(def, targetLevel);
             var stock = ToAmount(lockedCity);
@@ -180,14 +186,22 @@ public sealed class BuildingService
                 if (OuterFieldCatalog.IsField(buildingType) && targetLevel >= 1)
                 {
                     var def = OuterFieldCatalog.Find(buildingType);
+                    var hall = await _orm.Select<BuildingEntity>()
+                        .WithTransaction(transaction)
+                        .Where(b => b.CityId == cityId && b.Type == TechBonuses.ResourceHall)
+                        .FirstAsync(ct);
+                    var prod = TechBonuses.ProductionPercent(hall?.Level ?? 0);
                     if (def is not null && row.LastCollectedAt is not null && previousLevel >= 1)
                     {
                         var pending = FieldProduction.Pending(
-                            def.RatePerHour(previousLevel),
-                            def.FieldCap(previousLevel),
+                            TechBonuses.ApplyPercent(def.RatePerHour(previousLevel), prod),
+                            TechBonuses.ApplyPercent(def.FieldCap(previousLevel), prod),
                             row.LastCollectedAt,
                             now);
-                        row.LastCollectedAt = FieldProduction.AfterCollect(now, pending, def.RatePerHour(targetLevel));
+                        row.LastCollectedAt = FieldProduction.AfterCollect(
+                            now,
+                            pending,
+                            TechBonuses.ApplyPercent(def.RatePerHour(targetLevel), prod));
                     }
                     else if (row.LastCollectedAt is null)
                     {
@@ -199,6 +213,17 @@ public sealed class BuildingService
                     .WithTransaction(transaction)
                     .SetSource(row)
                     .ExecuteAffrowsAsync(ct);
+
+                if (buildingType == TechBonuses.ResourceHall)
+                {
+                    await RecalibrateFieldsAsync(
+                        transaction,
+                        cityId,
+                        TechBonuses.ProductionPercent(previousLevel),
+                        TechBonuses.ProductionPercent(targetLevel),
+                        now,
+                        ct);
+                }
 
                 return (row, lockedCity);
             }, cancellationToken);
@@ -242,6 +267,49 @@ public sealed class BuildingService
         }
     }
 
+    private async Task RecalibrateFieldsAsync(
+        System.Data.Common.DbTransaction transaction,
+        long cityId,
+        int oldPercent,
+        int newPercent,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        if (oldPercent == newPercent)
+        {
+            return;
+        }
+
+        var rows = await _orm.Select<BuildingEntity>()
+            .WithTransaction(transaction)
+            .Where(b => b.CityId == cityId)
+            .ToListAsync(cancellationToken);
+        foreach (var field in rows)
+        {
+            var def = OuterFieldCatalog.Find(field.Type);
+            if (def is null || field.Level < 1 || field.LastCollectedAt is null)
+            {
+                continue;
+            }
+
+            var pending = FieldProduction.Pending(
+                TechBonuses.ApplyPercent(def.RatePerHour(field.Level), oldPercent),
+                TechBonuses.ApplyPercent(def.FieldCap(field.Level), oldPercent),
+                field.LastCollectedAt,
+                now);
+            field.LastCollectedAt = FieldProduction.AfterCollect(
+                now,
+                pending,
+                TechBonuses.ApplyPercent(def.RatePerHour(field.Level), newPercent));
+            field.UpdatedAt = now;
+            await _orm.Update<BuildingEntity>()
+                .WithTransaction(transaction)
+                .SetSource(field)
+                .UpdateColumns(b => new { b.LastCollectedAt, b.UpdatedAt })
+                .ExecuteAffrowsAsync(cancellationToken);
+        }
+    }
+
     private async Task<CityEntity> RequireCityAsync(long accountId, CancellationToken cancellationToken)
     {
         var character = await _orm.Select<CharacterEntity>()
@@ -270,6 +338,7 @@ public sealed class BuildingService
             .ToListAsync(cancellationToken);
         var byType = rows.ToDictionary(b => b.Type, StringComparer.OrdinalIgnoreCase);
         var palaceLevel = byType.TryGetValue("palace", out var palace) ? palace.Level : 0;
+        var academyLevel = byType.TryGetValue("academy", out var academy) ? academy.Level : 0;
         var houseLevel = byType.TryGetValue("house", out var house) ? house.Level : 0;
         var warehouseLevel = byType.TryGetValue("warehouse", out var warehouse) ? warehouse.Level : 0;
         var queueRow = rows.FirstOrDefault(b => b.Status == BuildingStatus.Upgrading);
@@ -311,7 +380,7 @@ public sealed class BuildingService
                 {
                     blocked = "queue";
                 }
-                else if (palaceLevel < def.RequirePalaceLevel)
+                else if (palaceLevel < def.RequirePalaceLevel || academyLevel < def.RequireAcademyLevel)
                 {
                     blocked = "prerequisite";
                 }
@@ -359,7 +428,22 @@ public sealed class BuildingService
         {
             "house" => new Dictionary<string, int> { ["populationCap"] = InnerBuildingCatalog.PopulationCap(level) },
             "warehouse" => new Dictionary<string, int> { ["resourceCap"] = InnerBuildingCatalog.ResourceCap(level) },
-            "academy" => new Dictionary<string, int> { ["researchSpeedBonus"] = 0 },
+            "academy" => new Dictionary<string, int> { ["attackBonusPercent"] = TechBonuses.AcademyAttackPercent(level) },
+            "drillHall" => new Dictionary<string, int>
+            {
+                ["troopPowerBonusPercent"] = TechBonuses.TroopPowerPercent(level),
+                ["recruitDiscountPercent"] = TechBonuses.RecruitDiscountPercent(level)
+            },
+            "defenseHall" => new Dictionary<string, int>
+            {
+                ["wallDefenseFlat"] = TechBonuses.WallDefenseFlat(level),
+                ["trapBonusPercent"] = (int)Math.Round(TechBonuses.TrapBonus(level) * 100)
+            },
+            "resourceHall" => new Dictionary<string, int>
+            {
+                ["productionBonusPercent"] = TechBonuses.ProductionPercent(level)
+            },
+            "barracks" => new Dictionary<string, int> { ["troopCap"] = InnerBuildingCatalog.TroopCap(level) },
             _ => new Dictionary<string, int>()
         };
     }

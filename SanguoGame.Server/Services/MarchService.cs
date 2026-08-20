@@ -7,6 +7,7 @@ using SanguoGame.Core;
 using SanguoGame.Core.Army;
 using SanguoGame.Core.Buildings;
 using SanguoGame.Core.World;
+using SanguoGame.Core.Daily;
 using SanguoGame.Core.Social;
 using SanguoGame.Infrastructure.Entities;
 using SanguoGame.Server.Contracts;
@@ -24,6 +25,7 @@ public sealed class MarchService
     private readonly ArmyService _army;
     private readonly MailService _mail;
     private readonly AllianceService _alliances;
+    private readonly DailyService _daily;
 
     public MarchService(
         IFreeSql orm,
@@ -32,7 +34,8 @@ public sealed class MarchService
         IOptions<WorldMapOptions> map,
         ArmyService army,
         MailService mail,
-        AllianceService alliances)
+        AllianceService alliances,
+        DailyService daily)
     {
         _orm = orm;
         _jobs = jobs;
@@ -41,6 +44,7 @@ public sealed class MarchService
         _army = army;
         _mail = mail;
         _alliances = alliances;
+        _daily = daily;
     }
 
     public async Task<ArmyOverviewDto> StartAsync(long accountId, MarchRequest request, CancellationToken cancellationToken)
@@ -107,7 +111,91 @@ public sealed class MarchService
                 Cavalry = troops.Cavalry,
                 DepartAt = now,
                 ArriveAt = arrive,
-                Status = MarchStatus.Marching
+                Status = MarchStatus.Marching,
+                Kind = MarchKind.Attack
+            };
+            march.Id = await _orm.Insert(march).WithTransaction(transaction).ExecuteIdentityAsync(ct);
+            city.Infantry = locked.Infantry;
+            city.Archer = locked.Archer;
+            city.Cavalry = locked.Cavalry;
+            return march.Id;
+        }, cancellationToken);
+
+        var stored = await _orm.Select<MarchEntity>().Where(m => m.Id == marchId).FirstAsync(cancellationToken);
+        if (stored is not null)
+        {
+            _jobs.Schedule<CompleteMarchJob>(
+                job => job.Execute(stored.Id),
+                UtcSchedule.At(stored.ArriveAt));
+        }
+
+        return await _army.BuildOverviewAsync(city, cancellationToken);
+    }
+
+    public async Task<ArmyOverviewDto> StartScoutAsync(long accountId, ScoutRequest request, CancellationToken cancellationToken)
+    {
+        if (request.TargetType.Equals("market", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new BizException(ErrorCodes.ScoutNotAllowed, "不能侦察市集");
+        }
+
+        if (!TryParseTarget(request.TargetType, out var targetType))
+        {
+            throw new BizException(ErrorCodes.ValidationFailed, "未知目标类型");
+        }
+
+        var city = await _army.RequireCityAsync(accountId, cancellationToken);
+        var (toX, toY) = await ResolveScoutTargetAsync(targetType, request.TargetId, city.Id, cancellationToken);
+        var troops = new TroopCount(1, 0, 0);
+
+        var marchId = await CityRowLock.RunAsync(_orm, city.Id, async (transaction, locked, ct) =>
+        {
+            var rows = await LoadBuildingsAsync(transaction, locked.Id, ct);
+            var barracksLevel = rows.FirstOrDefault(b => b.Type == "barracks")?.Level ?? 0;
+            if (barracksLevel < 1)
+            {
+                throw new BizException(ErrorCodes.BarracksRequired, "需要兵营 1 级");
+            }
+
+            var stationed = CityStats.Troops(locked);
+            if (!stationed.CanAfford(troops))
+            {
+                throw new BizException(ErrorCodes.InsufficientTroops, "兵力不足");
+            }
+
+            var marchingCount = await _orm.Select<MarchEntity>()
+                .WithTransaction(transaction)
+                .Where(m => m.FromCityId == locked.Id && m.Status == MarchStatus.Marching)
+                .CountAsync(ct);
+            if (marchingCount >= _map.MaxMarchesPerCity)
+            {
+                throw new BizException(ErrorCodes.MarchLimit, "行军数量已达上限");
+            }
+
+            CityStats.ApplyTroops(locked, stationed.Subtract(troops));
+            await _orm.Update<CityEntity>()
+                .WithTransaction(transaction)
+                .SetSource(locked)
+                .UpdateColumns(c => new { c.Infantry, c.Archer, c.Cavalry })
+                .ExecuteAffrowsAsync(ct);
+
+            var now = DateTime.UtcNow;
+            var arrive = now.AddSeconds(MarchTiming.ScoutDurationSeconds(
+                locked.X, locked.Y, toX, toY, _map.SecondsPerTile, _map.MinMarchSeconds));
+            var march = new MarchEntity
+            {
+                FromCityId = locked.Id,
+                TargetType = targetType,
+                TargetId = request.TargetId,
+                FromX = locked.X,
+                FromY = locked.Y,
+                ToX = toX,
+                ToY = toY,
+                Infantry = 1,
+                DepartAt = now,
+                ArriveAt = arrive,
+                Status = MarchStatus.Marching,
+                Kind = MarchKind.Scout
             };
             march.Id = await _orm.Insert(march).WithTransaction(transaction).ExecuteIdentityAsync(ct);
             city.Infantry = locked.Infantry;
@@ -141,8 +229,12 @@ public sealed class MarchService
             return;
         }
 
-        BattleReportDto report;
-        if (march.TargetType == MarchTargetType.Outpost)
+        BattleReportDto? report = null;
+        if (march.Kind == MarchKind.Scout)
+        {
+            await SettleScoutAsync(march, cancellationToken);
+        }
+        else if (march.TargetType == MarchTargetType.Outpost)
         {
             report = await SettleOutpostAsync(march, cancellationToken);
         }
@@ -153,7 +245,7 @@ public sealed class MarchService
 
         await _hub.Clients.Group($"city:{march.FromCityId}")
             .SendAsync("MarchArrived", ApiResult.Ok(report), cancellationToken);
-        if (march.TargetType == MarchTargetType.City)
+        if (march.Kind == MarchKind.Attack && march.TargetType == MarchTargetType.City)
         {
             await _hub.Clients.Group($"city:{march.TargetId}")
                 .SendAsync("CityAttacked", ApiResult.Ok(report), cancellationToken);
@@ -258,8 +350,10 @@ public sealed class MarchService
                 }
 
                 var summary = $"攻克{outpost.Name}，缴获粮{loot.Grain} 木{loot.Wood} 铁{loot.Iron} 铜{loot.Copper}";
-                return await PersistAsync(
+                var report = await PersistAsync(
                     transaction, current, outcome, loot, summary, attacker.CharacterId, null, ct);
+                await _daily.AddProgressAsync(attacker.Id, DailyCatalog.Raid, 1, ct, transaction);
+                return report;
             }
 
             outpost.Garrison = outcome.DefenderAfter.Infantry;
@@ -352,6 +446,85 @@ public sealed class MarchService
         }, cancellationToken);
     }
 
+    private async Task SettleScoutAsync(MarchEntity march, CancellationToken cancellationToken)
+    {
+        await CityRowLock.RunAsync(_orm, march.FromCityId, async (transaction, attacker, ct) =>
+        {
+            var current = await LoadMarchAsync(transaction, march.Id, ct);
+            if (current is null || current.Status != MarchStatus.Marching)
+            {
+                return 0;
+            }
+
+            var buildings = await LoadBuildingsAsync(transaction, attacker.Id, ct);
+            var barracks = buildings.FirstOrDefault(b => b.Type == "barracks")?.Level ?? 0;
+            ReturnTroops(attacker, new TroopCount(current.Infantry, current.Archer, current.Cavalry), InnerBuildingCatalog.TroopCap(barracks));
+            await SaveCityAsync(transaction, attacker, ct);
+            current.Status = MarchStatus.Settled;
+            await _orm.Update<MarchEntity>()
+                .WithTransaction(transaction)
+                .SetSource(current)
+                .UpdateColumns(m => m.Status)
+                .ExecuteAffrowsAsync(ct);
+
+            var body = await BuildScoutBodyAsync(transaction, current, ct);
+            await _mail.SendAsync(
+                attacker.CharacterId,
+                MailType.Scout,
+                "斥候回报",
+                body,
+                "march",
+                current.Id,
+                ct,
+                transaction);
+            return 0;
+        }, cancellationToken);
+    }
+
+    private async Task<string> BuildScoutBodyAsync(DbTransaction transaction, MarchEntity march, CancellationToken cancellationToken)
+    {
+        if (march.TargetType == MarchTargetType.Outpost)
+        {
+            var outpost = await _orm.Select<OutpostEntity>()
+                .WithTransaction(transaction)
+                .Where(o => o.Id == march.TargetId)
+                .FirstAsync(cancellationToken);
+            if (outpost is null || OutpostCatalog.IsExpired(outpost.Kind, outpost.ExpiresAt, DateTime.UtcNow))
+            {
+                return "目标据点已消失。";
+            }
+
+            EnsureRecovered(outpost, DateTime.UtcNow);
+            var def = OutpostCatalog.Require(outpost.Type);
+            var kind = outpost.Kind == OutpostKind.Roaming ? "流寇" : "常驻";
+            var life = "";
+            if (outpost.Kind == OutpostKind.Roaming && outpost.ExpiresAt is { } until)
+            {
+                var min = Math.Max(1, (int)Math.Ceiling((until - DateTime.UtcNow).TotalMinutes));
+                life = $"，约 {min} 分钟后消失";
+            }
+
+            return $"{outpost.Name}（{kind}{life}）。驻军 {outpost.Garrison}。战利品 粮{def.Loot.Grain} 木{def.Loot.Wood} 铁{def.Loot.Iron} 铜{def.Loot.Copper}。";
+        }
+
+        var city = await _orm.Select<CityEntity>()
+            .WithTransaction(transaction)
+            .Where(c => c.Id == march.TargetId)
+            .FirstAsync(cancellationToken);
+        if (city is null)
+        {
+            return "目标城已不存在。";
+        }
+
+        var rows = await LoadBuildingsAsync(transaction, city.Id, cancellationToken);
+        var wall = WallCatalog.WallDefense(CityStats.WallLevels(rows), CityStats.BuildingLevel(rows, TechBonuses.DefenseHall));
+        var troops = CityStats.Troops(city);
+        var protect = CityStats.IsProtected(city, DateTime.UtcNow)
+            ? $"保护至 {city.ProtectionUntil:yyyy-MM-dd HH:mm}Z"
+            : "无保护";
+        return $"{city.Name}。驻城 步{troops.Infantry} 弓{troops.Archer} 骑{troops.Cavalry}。仓库 粮{city.Grain} 木{city.Wood} 铁{city.Iron} 铜{city.Copper}。城防 {wall}。{protect}。";
+    }
+
     private async Task<(int X, int Y)> ResolveTargetAsync(
         MarchTargetType targetType,
         long targetId,
@@ -389,6 +562,37 @@ public sealed class MarchService
         if (CityStats.IsProtected(city, now))
         {
             throw new BizException(ErrorCodes.CityProtected, "目标处于保护期");
+        }
+
+        return (city.X, city.Y);
+    }
+
+    private async Task<(int X, int Y)> ResolveScoutTargetAsync(
+        MarchTargetType targetType,
+        long targetId,
+        long fromCityId,
+        CancellationToken cancellationToken)
+    {
+        if (targetType == MarchTargetType.Outpost)
+        {
+            var outpost = await _orm.Select<OutpostEntity>().Where(o => o.Id == targetId).FirstAsync(cancellationToken);
+            if (outpost is null || OutpostCatalog.IsExpired(outpost.Kind, outpost.ExpiresAt, DateTime.UtcNow))
+            {
+                throw new BizException(ErrorCodes.NotFound, "据点不存在");
+            }
+
+            return (outpost.X, outpost.Y);
+        }
+
+        var city = await _orm.Select<CityEntity>().Where(c => c.Id == targetId).FirstAsync(cancellationToken);
+        if (city is null)
+        {
+            throw new BizException(ErrorCodes.NotFound, "目标城不存在");
+        }
+
+        if (city.Id == fromCityId)
+        {
+            throw new BizException(ErrorCodes.ScoutNotAllowed, "不能侦察自己的城");
         }
 
         return (city.X, city.Y);

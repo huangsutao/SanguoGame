@@ -18,7 +18,8 @@ import type {
   AllianceDetailDto,
   AlliancePendingDto,
   AllianceSummaryDto,
-  MarketsOverviewDto
+  MarketsOverviewDto,
+  DailyOverviewDto
 } from "./types";
 
 export function register(username: string, password: string): Promise<TokenResponse> {
@@ -89,6 +90,18 @@ export function march(
   cavalry: number
 ): Promise<ArmyOverviewDto> {
   return request<ArmyOverviewDto>("post", "/api/army/march", { targetType, targetId, infantry, archer, cavalry });
+}
+
+export function scout(targetType: string, targetId: number): Promise<ArmyOverviewDto> {
+  return request<ArmyOverviewDto>("post", "/api/army/scout", { targetType, targetId });
+}
+
+export function fetchDaily(): Promise<DailyOverviewDto> {
+  return request<DailyOverviewDto>("get", "/api/daily");
+}
+
+export function claimDaily(missionType: string): Promise<DailyOverviewDto> {
+  return request<DailyOverviewDto>("post", "/api/daily/claim", { missionType });
 }
 
 export function fetchReports(page = 1): Promise<PagedResult<BattleReportDto>> {

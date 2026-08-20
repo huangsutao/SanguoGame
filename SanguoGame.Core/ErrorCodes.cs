@@ -100,6 +100,12 @@ public static class ErrorCodes
     /// <summary>运量超限或兑换数量非法。</summary>
     public const int InvalidTrade = 40928;
 
+    /// <summary>军务未完成或已领取。</summary>
+    public const int DailyNotClaimable = 40929;
+
+    /// <summary>目标不可侦察。</summary>
+    public const int ScoutNotAllowed = 40930;
+
     /// <summary>请求过于频繁。</summary>
     public const int TooManyRequests = 42900;
 

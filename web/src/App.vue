@@ -39,7 +39,10 @@ import {
   updateAllianceNotice,
   fetchMarkets,
   tradeMarket,
-  aidMarket
+  aidMarket,
+  scout,
+  fetchDaily,
+  claimDaily
 } from "./api/game";
 import { createGameHub } from "./api/hub";
 import { ApiError } from "./api/types";
@@ -62,7 +65,8 @@ import type {
   BuildingCostDto,
   MarketsOverviewDto,
   MarchDto,
-  TroopDto
+  TroopDto,
+  DailyOverviewDto
 } from "./api/types";
 import { clearTokens, getAccessToken, getRefreshToken, saveTokens, setUnauthorizedHandler } from "./session";
 import type { HubConnection } from "@microsoft/signalr";
@@ -74,7 +78,7 @@ const busy = ref(false);
 const error = ref("");
 const notice = ref("");
 const mode = ref<"login" | "register">("login");
-const tab = ref<"city" | "army" | "map" | "reports" | "mail" | "ranks" | "alliance" | "market">("city");
+const tab = ref<"city" | "army" | "daily" | "map" | "reports" | "mail" | "ranks" | "alliance" | "market">("city");
 const session = ref<SessionResponse | null>(null);
 const overview = ref<BuildingsOverviewDto | null>(null);
 const fields = ref<FieldsOverviewDto | null>(null);
@@ -109,6 +113,7 @@ const aidGrain = ref(200);
 const aidWood = ref(0);
 const aidIron = ref(0);
 const aidCopper = ref(0);
+const daily = ref<DailyOverviewDto | null>(null);
 
 const username = ref("");
 const password = ref("");
@@ -124,6 +129,7 @@ const hudResources = computed(
     fields.value?.resources ??
     walls.value?.resources ??
     army.value?.resources ??
+    daily.value?.resources ??
     markets.value?.resources ??
     null
 );
@@ -133,6 +139,7 @@ const hudCap = computed(
     fields.value?.resourceCap ??
     walls.value?.resourceCap ??
     army.value?.resourceCap ??
+    daily.value?.resourceCap ??
     markets.value?.resourceCap ??
     0
 );
@@ -187,6 +194,17 @@ const selectedProtected = computed(() => {
   return Boolean(world.value?.cities.find((item) => item.id === selected.value?.targetId)?.protected);
 });
 
+const selectedSelf = computed(() => {
+  if (selected.value?.targetType !== "city") {
+    return false;
+  }
+  return selected.value.targetId === session.value?.city?.id;
+});
+
+const dailyClaimable = computed(
+  () => daily.value?.missions.filter((item) => !item.claimed && item.progress >= item.required).length ?? 0
+);
+
 const marchInvalid = computed(() => {
   if (!army.value) {
     return "没有军队";
@@ -207,6 +225,22 @@ const marchInvalid = computed(() => {
   return "";
 });
 
+const scoutInvalid = computed(() => {
+  if (!army.value) {
+    return "没有军队";
+  }
+  if (army.value.barracksLevel < 1) {
+    return "需要兵营 1 级";
+  }
+  if (army.value.troops.infantry < 1) {
+    return "斥候需要 1 名步兵";
+  }
+  if (selectedSelf.value) {
+    return "不能侦察自己的城";
+  }
+  return "";
+});
+
 function troopLine(t?: TroopDto): string {
   if (!t) {
     return "";
@@ -219,6 +253,23 @@ function marchTargetName(item: MarchDto): string {
     return world.value?.outposts.find((outpost) => outpost.id === item.targetId)?.name ?? "据点";
   }
   return world.value?.cities.find((city) => city.id === item.targetId)?.name ?? "城池";
+}
+
+function marchKindLabel(item: MarchDto): string {
+  return item.kind === "scout" ? "斥候" : "出征";
+}
+
+function missionWidth(progress: number, required: number): string {
+  if (required <= 0) {
+    return "0%";
+  }
+  return `${Math.max(0, Math.min(100, (progress / required) * 100))}%`;
+}
+
+function rewardParts(reward: { grain: number; wood: number; iron: number; copper: number }) {
+  return resourceKeys
+    .map((key) => ({ key, amount: reward[key] }))
+    .filter((item) => item.amount > 0);
 }
 
 const resourceLabel: Record<string, string> = {
@@ -238,6 +289,13 @@ const allianceRoleLabel: Record<string, string> = {
   leader: "盟主",
   officer: "官员",
   member: "成员"
+};
+
+const mailTypeLabel: Record<string, string> = {
+  system: "系统",
+  battle: "战报",
+  alliance: "联盟",
+  scout: "斥候"
 };
 
 let hub: HubConnection | null = null;
@@ -347,6 +405,10 @@ async function loadMarkets(): Promise<void> {
   }
 }
 
+async function loadDaily(): Promise<void> {
+  daily.value = await fetchDaily();
+}
+
 async function loadReports(page = 1, append = false): Promise<void> {
   const data = await fetchReports(page);
   reports.value = append && reports.value
@@ -403,7 +465,8 @@ async function loadAll(): Promise<void> {
     loadMail(),
     loadRankings(),
     loadAlliance(),
-    loadMarkets()
+    loadMarkets(),
+    loadDaily()
   ]);
 }
 
@@ -415,10 +478,10 @@ async function connectHub(): Promise<void> {
     error.value = "";
     notice.value = "建造完成";
   });
-  hub.on("MarchArrived", () => {
+  hub.on("MarchArrived", (payload?: { data?: unknown }) => {
     void loadAll();
     error.value = "";
-    notice.value = "部队已到达";
+    notice.value = payload?.data ? "部队已到达" : "斥候已回报";
   });
   hub.on("CityAttacked", () => {
     void loadAll();
@@ -468,6 +531,7 @@ onMounted(async () => {
     allianceList.value = null;
     alliancePending.value = null;
     markets.value = null;
+    daily.value = null;
     void disconnectHub();
   });
 
@@ -516,6 +580,7 @@ watch(hasCity, async (ready) => {
     allianceList.value = null;
     alliancePending.value = null;
     markets.value = null;
+    daily.value = null;
     await disconnectHub();
     return;
   }
@@ -531,6 +596,9 @@ watch(tab, (value) => {
   if (value === "map" && hasCity.value) {
     lastWorldRefresh = Date.now();
     void loadWorld().catch(fail);
+  }
+  if (value === "daily" && hasCity.value) {
+    void loadDaily().catch(fail);
   }
 });
 
@@ -592,7 +660,7 @@ async function submitUpgrade(type: string): Promise<void> {
   busy.value = true;
   try {
     overview.value = await upgradeBuilding(type);
-    await Promise.all([loadCity()]);
+    await Promise.all([loadCity(), loadDaily()]);
     notice.value = `已开始${queueName(type) || "建造"}`;
   } catch (err) {
     fail(err);
@@ -607,7 +675,7 @@ async function submitFieldUpgrade(type: string): Promise<void> {
   busy.value = true;
   try {
     fields.value = await upgradeField(type);
-    await loadCity();
+    await Promise.all([loadCity(), loadDaily()]);
     notice.value = `已开始${queueName(type) || "建造"}`;
   } catch (err) {
     fail(err);
@@ -622,7 +690,7 @@ async function submitWallUpgrade(type: string): Promise<void> {
   busy.value = true;
   try {
     walls.value = await upgradeWall(type);
-    await loadCity();
+    await Promise.all([loadCity(), loadDaily()]);
     notice.value = `已开始${queueName(type) || "建造"}`;
   } catch (err) {
     fail(err);
@@ -657,6 +725,7 @@ async function submitCollect(type?: string): Promise<void> {
       .map((key) => `${resourceLabel[key]}${collected[key]}`);
     if (parts.length) {
       notice.value = `已收取 ${parts.join(" ")}`;
+      await loadDaily();
     } else if (result.message && result.message !== "ok") {
       notice.value = result.message;
     } else {
@@ -680,6 +749,7 @@ async function submitRecruit(): Promise<void> {
   try {
     army.value = await recruit(recruitType.value, recruitCount.value);
     overview.value = await fetchBuildings();
+    await loadDaily();
     notice.value = `已征${recruitCount.value}名${troopLabel[recruitType.value] ?? "士兵"}`;
   } catch (err) {
     fail(err);
@@ -691,6 +761,10 @@ async function submitRecruit(): Promise<void> {
 async function submitMarch(): Promise<void> {
   if (!selected.value) {
     error.value = "请先在地图上点选目标";
+    return;
+  }
+  if (selectedSelf.value) {
+    error.value = "不能进攻自己的城";
     return;
   }
   if (selectedProtected.value) {
@@ -715,7 +789,7 @@ async function submitMarch(): Promise<void> {
       archer,
       cavalry
     );
-    await Promise.all([loadWorld(), loadReports(), loadCity()]);
+    await Promise.all([loadWorld(), loadReports(), loadCity(), loadDaily()]);
     tab.value = "map";
     notice.value = "已出征，队伍正在赶路";
   } catch (err) {
@@ -723,6 +797,38 @@ async function submitMarch(): Promise<void> {
   } finally {
     busy.value = false;
   }
+}
+
+async function submitScout(): Promise<void> {
+  if (!selected.value) {
+    error.value = "请先在地图上点选目标";
+    return;
+  }
+  if (scoutInvalid.value) {
+    error.value = scoutInvalid.value;
+    return;
+  }
+  error.value = "";
+  notice.value = "";
+  busy.value = true;
+  try {
+    army.value = await scout(selected.value.targetType, selected.value.targetId);
+    await Promise.all([loadWorld(), loadMail(), loadDaily()]);
+    tab.value = "map";
+    notice.value = "斥候已出发，到点后看邮件";
+  } catch (err) {
+    fail(err);
+  } finally {
+    busy.value = false;
+  }
+}
+
+async function submitClaimDaily(missionType: string): Promise<void> {
+  await run(async () => {
+    daily.value = await claimDaily(missionType);
+    await loadCity();
+    notice.value = "已领取犒赏";
+  });
 }
 
 function onSelectTarget(target: MarchTarget): void {
@@ -751,7 +857,7 @@ async function submitTrade(): Promise<void> {
       tradeTo.value,
       Math.max(0, Number(tradeAmount.value) || 0)
     );
-    await Promise.all([loadCity(), loadWorld(), loadMail()]);
+    await Promise.all([loadCity(), loadWorld(), loadMail(), loadDaily()]);
     notice.value = "已出发前往市集";
   });
 }
@@ -917,6 +1023,8 @@ async function submitLogout(): Promise<void> {
     allianceList.value = null;
     alliancePending.value = null;
     password.value = "";
+    markets.value = null;
+    daily.value = null;
   }
 }
 </script>
@@ -926,7 +1034,7 @@ async function submitLogout(): Promise<void> {
     <header v-if="!hasCity" class="header splash">
       <img class="splash-art" src="/art/palace.jpg" alt="" />
       <h1>战国</h1>
-      <p class="sub">建城 · 内政 · 出征 · 地图 · 联盟</p>
+      <p class="sub">建城 · 内政 · 出征 · 军务 · 地图 · 联盟</p>
     </header>
     <div v-else class="hud-stack">
       <header class="hud-top">
@@ -958,6 +1066,9 @@ async function submitLogout(): Promise<void> {
       <div class="tabs play">
         <button type="button" :class="{ active: tab === 'city' }" @click="tab = 'city'">城池</button>
         <button type="button" :class="{ active: tab === 'army' }" @click="tab = 'army'">军队</button>
+        <button type="button" :class="{ active: tab === 'daily' }" @click="tab = 'daily'">
+          军务{{ dailyClaimable ? ` ${dailyClaimable}` : "" }}
+        </button>
         <button type="button" :class="{ active: tab === 'map' }" @click="tab = 'map'">地图</button>
         <button type="button" :class="{ active: tab === 'market' }" @click="tab = 'market'">市集</button>
         <button type="button" :class="{ active: tab === 'reports' }" @click="tab = 'reports'">战报</button>
@@ -1216,26 +1327,62 @@ async function submitLogout(): Promise<void> {
               <span v-if="army.recruitDiscountPercent" class="hint">征兵减免 {{ army.recruitDiscountPercent }}%</span>
             </div>
             <p v-else class="hint">步兵需兵营 1 级，弓兵 2 级，骑兵 3 级。征兵即时扣资源。</p>
-            <h3>出征</h3>
+            <h3>出征 / 侦察</h3>
             <p :class="selectedProtected ? 'lose' : 'hint'">
               {{ selected ? `目标：${selected.label}` : "在地图点选据点或其他玩家城" }}
             </p>
-            <p class="hint">驻军 {{ troopLine(army.troops) }}</p>
+            <p v-if="selectedSelf" class="hint">不能侦察或进攻自己的城</p>
+            <p v-else-if="selectedProtected" class="lose">保护中的城不能进攻，但仍可派斥候查看</p>
+            <p class="hint">驻军 {{ troopLine(army.troops) }}。斥候固定派出 1 名步兵，半程到达，不战斗。</p>
             <p v-if="marchInvalid && selected" class="hint">{{ marchInvalid }}</p>
+            <p v-if="scoutInvalid && selected" class="hint">{{ scoutInvalid }}</p>
             <div class="form inline">
               <label>步 <input v-model.number="marchInf" type="number" min="0" :max="army.troops.infantry" /></label>
               <label>弓 <input v-model.number="marchArc" type="number" min="0" :max="army.troops.archer" /></label>
               <label>骑 <input v-model.number="marchCav" type="number" min="0" :max="army.troops.cavalry" /></label>
-              <button type="button" :disabled="busy || !selected || selectedProtected || Boolean(marchInvalid)" @click="submitMarch">出征</button>
+              <button type="button" :disabled="busy || !selected || selectedSelf || selectedProtected || Boolean(marchInvalid)" @click="submitMarch">出征</button>
+              <button type="button" :disabled="busy || !selected || Boolean(scoutInvalid)" @click="submitScout">侦察</button>
             </div>
             <ul class="buildings">
               <li v-for="item in army.marches" :key="item.id">
                 <div>
-                  <strong>{{ marchTargetName(item) }}</strong>
+                  <strong>{{ marchKindLabel(item) }} · {{ marchTargetName(item) }}</strong>
                   <span class="meta">{{ item.fromX }},{{ item.fromY }} → {{ item.toX }},{{ item.toY }}</span>
                   <span class="hint">到达 {{ remainText(item.arriveAt) }}</span>
                   <p v-if="troopLine(item.troops)" class="hint">{{ troopLine(item.troops) }}</p>
                 </div>
+              </li>
+            </ul>
+          </section>
+
+          <section v-if="tab === 'daily' && daily" class="block">
+            <h2>每日军务</h2>
+            <p class="hint">按 UTC 自然日刷新。进度由成功指令自动累计，昨天未领的犒赏作废。</p>
+            <ul class="buildings">
+              <li v-for="item in daily.missions" :key="item.type">
+                <div>
+                  <strong>{{ item.name }}</strong>
+                  <span class="meta">{{ item.progress }}/{{ item.required }}</span>
+                  <p class="hint">{{ item.detail }}</p>
+                  <div class="mission-bar" aria-hidden="true">
+                    <i :style="{ width: missionWidth(item.progress, item.required) }"></i>
+                  </div>
+                  <div class="cost-row">
+                    <span v-for="part in rewardParts(item.reward)" :key="part.key" class="cost-chip">
+                      <img :src="resourceArt[part.key]" :alt="resourceLabel[part.key]" />
+                      {{ part.amount }}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  v-if="!item.claimed"
+                  type="button"
+                  :disabled="busy || item.progress < item.required"
+                  @click="submitClaimDaily(item.type)"
+                >
+                  {{ item.progress < item.required ? "未完成" : "领取" }}
+                </button>
+                <span v-else class="meta">已领</span>
               </li>
             </ul>
           </section>
@@ -1247,10 +1394,10 @@ async function submitLogout(): Promise<void> {
               <span><img src="/art/marker-outpost.jpg" alt="" />常驻据点</span>
               <span><img src="/art/marker-roaming.jpg" alt="" />限时流寇</span>
               <span><img src="/art/marker-market.jpg" alt="" />市集</span>
-              <span><img src="/art/marker-march.jpg" alt="" />行军（沿线走动）</span>
+              <span><img src="/art/marker-march.jpg" alt="" />行军（金线出征 / 青线斥候）</span>
               <span><img src="/art/marker-cart.jpg" alt="" />运输马车</span>
             </div>
-            <p class="hint">拖拽移动，滚轮对着指针缩放，点「回城」回到本城。蓝圈为保护中。点击据点或玩家城出征，点击市集兑换。</p>
+            <p class="hint">拖拽移动，滚轮对着指针缩放，点「回城」回到本城。蓝圈为保护中。点击据点或玩家城可出征或侦察，点击市集兑换。</p>
             <WorldMap :world="world" :active="tab === 'map'" @select="onSelectTarget" />
           </section>
 
@@ -1365,6 +1512,7 @@ async function submitLogout(): Promise<void> {
               <li v-for="item in mail?.items ?? []" :key="item.id">
                 <div>
                   <strong>{{ item.isRead ? item.title : `● ${item.title}` }}</strong>
+                  <span class="meta">{{ mailTypeLabel[item.type] ?? item.type }}</span>
                   <p class="hint">{{ item.body }}</p>
                 </div>
                 <button v-if="!item.isRead" type="button" :disabled="busy" @click="submitReadMail(item.id)">已读</button>

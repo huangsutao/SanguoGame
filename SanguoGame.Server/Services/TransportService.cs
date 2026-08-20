@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using SanguoGame.Core;
 using SanguoGame.Core.Army;
 using SanguoGame.Core.Buildings;
+using SanguoGame.Core.Daily;
 using SanguoGame.Core.Market;
 using SanguoGame.Core.Social;
 using SanguoGame.Core.World;
@@ -25,6 +26,7 @@ public sealed class TransportService
     private readonly ArmyService _army;
     private readonly MailService _mail;
     private readonly AllianceService _alliances;
+    private readonly DailyService _daily;
 
     public TransportService(
         IFreeSql orm,
@@ -33,7 +35,8 @@ public sealed class TransportService
         IOptions<WorldMapOptions> map,
         ArmyService army,
         MailService mail,
-        AllianceService alliances)
+        AllianceService alliances,
+        DailyService daily)
     {
         _orm = orm;
         _jobs = jobs;
@@ -42,6 +45,7 @@ public sealed class TransportService
         _army = army;
         _mail = mail;
         _alliances = alliances;
+        _daily = daily;
     }
 
     public async Task<MarketsOverviewDto> GetOverviewAsync(long accountId, CancellationToken cancellationToken)
@@ -99,6 +103,7 @@ public sealed class TransportService
 
         city = await ReloadCityAsync(city.Id, cancellationToken);
         Schedule(transportId);
+        await _daily.AddProgressAsync(city.Id, DailyCatalog.Trade, 1, cancellationToken);
         return await BuildOverviewAsync(city, cancellationToken);
     }
 

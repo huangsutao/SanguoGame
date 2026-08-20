@@ -13,7 +13,7 @@
 | 兵营解锁后征兵（步 / 弓 / 骑），兵力存在城上 | 帧同步、客户端预测 |
 | `POST` 出征立刻返回 `arriveAt` | 全图实时视野 |
 | Hangfire 到点一次性结算并出战报 | 多回合回合制、攻城耐久战 |
-| SignalR `MarchArrived` | 取消行军、加速行军 |
+| SignalR `MarchArrived` | 取消行军、加速行军（斥候见第 12 步，不战斗） |
 | NPC 与玩家走同一套 March / Battle | 本步打其他玩家（第 6 步） |
 
 ## 兵力
@@ -175,7 +175,7 @@ Job：`CompleteMarch(marchId)`，在 `arriveAt` 触发。已结算则直接成�
 |----|------|
 | `sg_city` | 增加 `infantry` / `archer` / `cavalry`（默认 0）；`protection_until` 第 6 步用 |
 | `sg_outpost` | NPC 据点，见 [大地图](design-world-map.md) |
-| `sg_march` | 行军：出发城、目标类型与 Id、三种兵、出发/到达时间、`status` |
+| `sg_march` | 行军：出发城、目标类型与 Id、三种兵、出发/到达时间、`status`、`kind`（进攻 / 斥候，见第 12 步） |
 | `sg_battle_report` | 战报；`march_id` 唯一 |
 
 `status`：`marching` / `settled`。

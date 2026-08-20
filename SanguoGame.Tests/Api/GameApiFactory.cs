@@ -180,6 +180,7 @@ public sealed class GameApiFactory : WebApplicationFactory<Program>, IAsyncLifet
                 sg_alliance_invite,
                 sg_alliance_member,
                 sg_alliance,
+                sg_daily_quest,
                 sg_mail,
                 sg_battle_report,
                 sg_march,
@@ -334,6 +335,22 @@ public sealed class GameApiFactory : WebApplicationFactory<Program>, IAsyncLifet
         if (updated != 1)
         {
             throw new InvalidOperationException($"未能写入城资源 cityId={cityId}");
+        }
+    }
+
+    public async Task SetCityTroopsAsync(long cityId, int infantry, int archer = 0, int cavalry = 0)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var orm = scope.ServiceProvider.GetRequiredService<IFreeSql>();
+        var updated = await orm.Update<CityEntity>()
+            .Where(c => c.Id == cityId)
+            .Set(c => c.Infantry, infantry)
+            .Set(c => c.Archer, archer)
+            .Set(c => c.Cavalry, cavalry)
+            .ExecuteAffrowsAsync();
+        if (updated != 1)
+        {
+            throw new InvalidOperationException($"未能写入城兵力 cityId={cityId}");
         }
     }
 

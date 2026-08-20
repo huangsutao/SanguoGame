@@ -35,4 +35,10 @@ public sealed class ArmyController : ControllerBase
         [FromBody] MarchRequest request,
         CancellationToken cancellationToken) =>
         ApiResult.Ok(await _marches.StartAsync(User.GetAccountId(), request, cancellationToken));
+
+    [HttpPost("scout")]
+    public async Task<ApiResult<ArmyOverviewDto>> Scout(
+        [FromBody] ScoutRequest request,
+        CancellationToken cancellationToken) =>
+        ApiResult.Ok(await _marches.StartScoutAsync(User.GetAccountId(), request, cancellationToken));
 }

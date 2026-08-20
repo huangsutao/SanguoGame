@@ -20,8 +20,8 @@
 | 项 | 值 |
 |----|----|
 | 已完成 | 第 0～10 步；第一版数值已按联调缩短时长、加大田产出 |
-| 正在做 / 下一步 | 实机联调验收（按手感再调） |
-| 立刻要写的文档 | 第 10 步设计已定稿 |
+| 正在做 / 下一步 | 第 11 步：分科科技建筑与加成 |
+| 立刻要写的文档 | 第 11 步设计已定稿 |
 
 ## 总览
 
@@ -38,6 +38,7 @@
 | 8 | 大地图表现 | [前后端通讯](design-frontend-comm.md)、[大地图](design-world-map.md) | Canvas 地图 | **已完成** |
 | 9 | 邮件、排行、联盟 | [邮件](design-mail.md)、[排行](design-ranking.md)、[联盟](design-alliance.md) | 同联盟免战 | **已完成** |
 | 10 | 市集兑换与同盟运输 | [市集](design-market.md) | NPC 市集点、`sg_transport`、`TransportArrived` | **已完成** |
+| 11 | 分科科技建筑与加成 | [科技](design-tech.md) | 演武堂 / 城防署 / 司农院 | **施工中** |
 
 网页端：第 1 步末搭最小 Vue（登录 + 我的城）；城内界面跟第 2 步；出征面板跟第 5 步；大地图画布放第 8 步。不要第 0 步先做空前端。
 
@@ -369,6 +370,33 @@
 
 ---
 
+## 第 11 步：分科科技建筑与加成
+
+**目标：** 书院之外再有军事 / 城防 / 资源科技建筑，升级即加成。
+
+### 先定稿
+
+- [design-tech.md](design-tech.md)
+
+### 做
+
+- 演武堂、城防署、司农院：城内建筑，共用一条队列
+- 前置：主殿 3 级且书院 1 级
+- 兵力战力%、征兵折扣、城防固定值、陷阱、田产出/田容按文档公式接入战斗、征兵、收取与被掠
+
+### 不做
+
+- 科技树节点、研究指令、第二队列
+
+### 验收
+
+- 书院未建不可建分科 → `40909`
+- 演武堂 1 级征 5 步兵扣粮 98
+- 司农院 1 级良田 1 级每小时 630
+- 箭塔 1 + 城防署 1 → 城防 10
+
+---
+
 ## 明确不做（第一版全程）
 
 - 全图实时视野、帧同步、即时 RTS
@@ -388,3 +416,4 @@
 | HTTP / Hub | `design-realtime.md` | `SanguoGame.Server` Controllers、Hubs |
 | 网页 | `design-frontend-comm.md` | `web/`（第 1 步末创建） |
 | 市集 / 运输 | `design-market.md` | `SanguoGame.Core` 汇率；`sg_market` / `sg_transport`；`MarketsController` |
+| 科技建筑 | `design-tech.md` | `SanguoGame.Core` 加成公式；`InnerBuildingCatalog` 三座分科 |

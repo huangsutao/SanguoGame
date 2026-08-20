@@ -59,15 +59,18 @@ ArriveAt = now + durationSeconds
 
 ```
 power(inf, arc, cav) = inf * 10 + arc * 12 + cav * 14
+power' = floor(power * (100 + troopPowerBonusPercent) / 100)
 
-atk = power(攻方兵力) * (100 + academy.level * 2) / 100
-def = power(守方兵力) + wallDefense * 10 + outpostBasePower
+atk = power'_攻 * (100 + academy.level * 2) / 100
+def = power'_守 + (wallDefense + wallDefenseFlat) * 10 + outpostBasePower
 
 atk' = atk * (90 + rng(0..20)) / 100
 def' = def * (90 + rng(0..20)) / 100
 
 attackerWon = atk' >= def'          # 战力相等攻方胜
 ```
+
+演武堂 / 城防署数值见 [科技](design-tech.md)。NPC 据点没有分科建筑。
 
 - NPC 据点没有城防建筑：`wallDefense = 0`，`outpostBasePower` 见 [大地图](design-world-map.md)；守方兵力为据点驻军（只记步兵当量）。
 - 玩家城：`outpostBasePower = 0`，守方兵力为 **当时仍驻城的兵**（行军在外的不参战），城防见 [城墙](design-city-wall.md)。
@@ -78,7 +81,7 @@ attackerWon = atk' >= def'          # 战力相等攻方胜
 ```
 若攻方胜：攻方伤亡率 0.15～0.30；守方伤亡率 0.55～0.80
 若攻方败：攻方伤亡率 0.55～0.80；守方伤亡率 0.15～0.30
-攻方伤亡率 += trapBonus（仅打玩家城时；据点为 0）
+攻方伤亡率 += trapBonus（仅打玩家城时；据点为 0；含城防署额外陷阱）
 剩余 = floor(原兵力 * (1 - 伤亡率))，每种兵分别取整
 ```
 

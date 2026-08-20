@@ -118,6 +118,12 @@ public sealed class AllApiDataTests
         Assert.Equal("prerequisite", house.BlockedReason);
         var barracks = overview.Data.Buildings.Single(b => b.Type == "barracks");
         Assert.Equal("prerequisite", barracks.BlockedReason);
+        var drillHall = overview.Data.Buildings.Single(b => b.Type == "drillHall");
+        Assert.Equal("演武堂", drillHall.Name);
+        Assert.Equal(BuildingCategory.Tech, drillHall.Category);
+        Assert.Equal("prerequisite", drillHall.BlockedReason);
+        Assert.Equal("prerequisite", overview.Data.Buildings.Single(b => b.Type == "defenseHall").BlockedReason);
+        Assert.Equal("prerequisite", overview.Data.Buildings.Single(b => b.Type == "resourceHall").BlockedReason);
 
         var (_, unknown) = await api.Post<BuildingsOverviewDto>("/api/buildings/upgrade", new { buildingType = "nope" });
         Assert.Equal(ErrorCodes.ValidationFailed, unknown.Code);

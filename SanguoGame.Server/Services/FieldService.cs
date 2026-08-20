@@ -61,6 +61,7 @@ public sealed class FieldService
             var rows = await LoadBuildingsAsync(transaction, lockedCity.Id, ct);
             var byType = rows.ToDictionary(b => b.Type, StringComparer.OrdinalIgnoreCase);
             var warehouseLevel = byType.TryGetValue("warehouse", out var warehouse) ? warehouse.Level : 0;
+            var resourceHallLevel = byType.TryGetValue(TechBonuses.ResourceHall, out var hall) ? hall.Level : 0;
             var resourceCap = InnerBuildingCatalog.ResourceCap(warehouseLevel);
             var stock = ToAmount(lockedCity);
             var gained = ResourceAmount.Zero;
@@ -81,8 +82,12 @@ public sealed class FieldService
                     continue;
                 }
 
-                var rate = def.RatePerHour(entity.Level);
-                var pending = FieldProduction.Pending(rate, def.FieldCap(entity.Level), entity.LastCollectedAt, now);
+                var rate = TechBonuses.BoostedRate(def, entity.Level, resourceHallLevel);
+                var pending = FieldProduction.Pending(
+                    rate,
+                    TechBonuses.BoostedCap(def, entity.Level, resourceHallLevel),
+                    entity.LastCollectedAt,
+                    now);
                 if (pending <= 0)
                 {
                     continue;
@@ -144,6 +149,7 @@ public sealed class FieldService
         var byType = rows.ToDictionary(b => b.Type, StringComparer.OrdinalIgnoreCase);
         var palaceLevel = byType.TryGetValue("palace", out var palace) ? palace.Level : 0;
         var warehouseLevel = byType.TryGetValue("warehouse", out var warehouse) ? warehouse.Level : 0;
+        var resourceHallLevel = byType.TryGetValue(TechBonuses.ResourceHall, out var hall) ? hall.Level : 0;
         var queueRow = rows.FirstOrDefault(b => b.Status == BuildingStatus.Upgrading);
         var stock = ToAmount(city);
         var queueBusy = queueRow is not null;
@@ -163,8 +169,8 @@ public sealed class FieldService
             var nextLevel = level + 1;
             BuildingCostDto? next = null;
             string? blocked = null;
-            var rate = def.RatePerHour(level);
-            var fieldCap = def.FieldCap(level);
+            var rate = TechBonuses.BoostedRate(def, level, resourceHallLevel);
+            var fieldCap = TechBonuses.BoostedCap(def, level, resourceHallLevel);
             var pending = FieldProduction.Pending(rate, fieldCap, entity?.LastCollectedAt, now);
 
             if (level >= def.MaxLevel)

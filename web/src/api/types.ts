@@ -185,6 +185,8 @@ export interface ArmyOverviewDto {
   protectionUntil?: string;
   marches: MarchDto[];
   troopTypes: TroopTypeDto[];
+  troopPowerBonusPercent?: number;
+  recruitDiscountPercent?: number;
 }
 
 export interface BattleReportDto {

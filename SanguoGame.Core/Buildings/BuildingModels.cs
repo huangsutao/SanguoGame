@@ -98,4 +98,5 @@ public sealed record InnerBuildingDef(
     int MaxLevel,
     int RequirePalaceLevel,
     int BaseDurationSeconds,
-    ResourceAmount BaseCost);
+    ResourceAmount BaseCost,
+    int RequireAcademyLevel = 0);

@@ -323,6 +323,45 @@ public sealed class GameApiFactory : WebApplicationFactory<Program>, IAsyncLifet
             throw new InvalidOperationException($"未能回拨田收取时间 cityId={cityId} type={fieldType}");
         }
     }
+
+    public async Task SetBuildingLevelAsync(long cityId, string type, int level)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var orm = scope.ServiceProvider.GetRequiredService<IFreeSql>();
+        var now = DateTime.UtcNow;
+        var row = await orm.Select<BuildingEntity>()
+            .Where(b => b.CityId == cityId && b.Type == type)
+            .FirstAsync();
+        if (row is null)
+        {
+            await orm.Insert(new BuildingEntity
+            {
+                CityId = cityId,
+                Type = type,
+                Level = level,
+                Status = BuildingStatus.Idle,
+                LastCollectedAt = OuterFieldCatalog.IsField(type) && level >= 1 ? now : null,
+                UpdatedAt = now
+            }).ExecuteAffrowsAsync();
+            return;
+        }
+
+        row.Level = level;
+        row.Status = BuildingStatus.Idle;
+        row.TargetLevel = null;
+        row.FinishAt = null;
+        row.UpdatedAt = now;
+        if (OuterFieldCatalog.IsField(type) && level >= 1 && row.LastCollectedAt is null)
+        {
+            row.LastCollectedAt = now;
+        }
+
+        var updated = await orm.Update<BuildingEntity>().SetSource(row).ExecuteAffrowsAsync();
+        if (updated != 1)
+        {
+            throw new InvalidOperationException($"未能写入建筑等级 cityId={cityId} type={type}");
+        }
+    }
 }
 
 [CollectionDefinition("api")]

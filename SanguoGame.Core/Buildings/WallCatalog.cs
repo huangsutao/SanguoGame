@@ -40,6 +40,12 @@ public static class WallCatalog
         return total;
     }
 
+    public static int WallDefense(IReadOnlyDictionary<string, int> levels, int defenseHallLevel) =>
+        WallDefense(levels) + TechBonuses.WallDefenseFlat(defenseHallLevel);
+
     public static double TrapBonus(int trapLevel) =>
         Math.Max(0, trapLevel) * 0.02;
+
+    public static double TrapBonus(int trapLevel, int defenseHallLevel) =>
+        Math.Clamp(TrapBonus(trapLevel) + TechBonuses.TrapBonus(defenseHallLevel), 0, 0.95);
 }

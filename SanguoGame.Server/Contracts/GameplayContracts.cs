@@ -80,7 +80,9 @@ public sealed record ArmyOverviewDto(
     int WallDefense,
     DateTime? ProtectionUntil,
     IReadOnlyList<MarchDto> Marches,
-    IReadOnlyList<TroopTypeDto> TroopTypes);
+    IReadOnlyList<TroopTypeDto> TroopTypes,
+    int TroopPowerBonusPercent = 0,
+    int RecruitDiscountPercent = 0);
 
 public sealed record BattleReportDto(
     long Id,

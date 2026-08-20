@@ -56,7 +56,10 @@ public sealed class ArmyService
                 throw new BizException(ErrorCodes.TroopCapExceeded, "超出带兵上限");
             }
 
-            var cost = TroopCatalog.Cost(def, count);
+            var drillHallLevel = CityStats.BuildingLevel(rows, TechBonuses.DrillHall);
+            var cost = TechBonuses.Discount(
+                TroopCatalog.Cost(def, count),
+                TechBonuses.RecruitDiscountPercent(drillHallLevel));
             var stock = CityStats.Stock(locked);
             var missing = stock.FirstMissingAgainst(cost);
             if (missing is not null)
@@ -85,12 +88,12 @@ public sealed class ArmyService
         var rows = await _orm.Select<BuildingEntity>()
             .Where(b => b.CityId == city.Id)
             .ToListAsync(cancellationToken);
-        var barracksLevel = rows.FirstOrDefault(b => b.Type == "barracks")?.Level ?? 0;
-        var warehouseLevel = rows.FirstOrDefault(b => b.Type == "warehouse")?.Level ?? 0;
-        var levels = WallCatalog.All.ToDictionary(
-            def => def.Type,
-            def => rows.FirstOrDefault(b => b.Type == def.Type)?.Level ?? 0,
-            StringComparer.OrdinalIgnoreCase);
+        var barracksLevel = CityStats.BuildingLevel(rows, "barracks");
+        var warehouseLevel = CityStats.BuildingLevel(rows, "warehouse");
+        var drillHallLevel = CityStats.BuildingLevel(rows, TechBonuses.DrillHall);
+        var defenseHallLevel = CityStats.BuildingLevel(rows, TechBonuses.DefenseHall);
+        var discountPercent = TechBonuses.RecruitDiscountPercent(drillHallLevel);
+        var levels = CityStats.WallLevels(rows);
         var marches = await _orm.Select<MarchEntity>()
             .Where(m => m.FromCityId == city.Id && m.Status == MarchStatus.Marching)
             .OrderBy(m => m.ArriveAt)
@@ -104,14 +107,20 @@ public sealed class ArmyService
             new TroopDto(city.Infantry, city.Archer, city.Cavalry),
             InnerBuildingCatalog.TroopCap(barracksLevel),
             barracksLevel,
-            WallCatalog.WallDefense(levels),
+            WallCatalog.WallDefense(levels, defenseHallLevel),
             city.ProtectionUntil,
             marches.Select(m => MapMarch(m, true)).ToList(),
-            TroopCatalog.All.Select(def => new TroopTypeDto(
-                def.Type,
-                def.Name,
-                def.RequireBarracksLevel,
-                new ResourceDto(def.UnitCost.Grain, def.UnitCost.Wood, def.UnitCost.Iron, def.UnitCost.Copper))).ToList());
+            TroopCatalog.All.Select(def =>
+            {
+                var unit = TechBonuses.Discount(def.UnitCost, discountPercent);
+                return new TroopTypeDto(
+                    def.Type,
+                    def.Name,
+                    def.RequireBarracksLevel,
+                    new ResourceDto(unit.Grain, unit.Wood, unit.Iron, unit.Copper));
+            }).ToList(),
+            TechBonuses.TroopPowerPercent(drillHallLevel),
+            discountPercent);
     }
 
     internal static MarchDto MapMarch(MarchEntity march, bool mine, bool includeTroops = true) =>

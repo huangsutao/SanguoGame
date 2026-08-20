@@ -33,3 +33,4 @@
 | [design-market.md](design-market.md) | 市集兑换与同盟运输 | 已定稿 |
 | [design-tech.md](design-tech.md) | 军事 / 城防 / 资源科技建筑与加成 | 已定稿 |
 | [design-daily-scout.md](design-daily-scout.md) | 每日军务与斥候侦察 | 已定稿 |
+| [design-shop.md](design-shop.md) | 商城、元宝与道具 | 已定稿 |

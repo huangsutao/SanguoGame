@@ -55,6 +55,7 @@ public sealed class RoamingOutpostApiTests
         await UpgradeAndFinish(api, "barracks");
         var (_, recruited) = await api.Post<ArmyOverviewDto>("/api/army/recruit", new { troopType = "infantry", count = 20 });
         Assert.Equal(0, recruited.Code);
+        await _factory.ForceCompleteRecruitsAsync();
 
         var (ox, oy) = await _factory.PickEmptyCellAsync(x, y);
         var expires = DateTime.UtcNow.AddHours(1);
@@ -97,6 +98,7 @@ public sealed class RoamingOutpostApiTests
         await UpgradeAndFinish(api, "barracks");
         var (_, recruited) = await api.Post<ArmyOverviewDto>("/api/army/recruit", new { troopType = "infantry", count = 20 });
         Assert.Equal(0, recruited.Code);
+        await _factory.ForceCompleteRecruitsAsync();
 
         var (ox, oy) = await _factory.PickEmptyCellAsync(x, y);
         var id = await _factory.InsertOutpostAsync(ox, oy, garrison: 1);

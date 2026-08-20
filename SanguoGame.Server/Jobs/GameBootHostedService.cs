@@ -25,11 +25,13 @@ public sealed class GameBootHostedService : BackgroundService
                 var buildings = scope.ServiceProvider.GetRequiredService<BuildingService>();
                 var marches = scope.ServiceProvider.GetRequiredService<MarchService>();
                 var transports = scope.ServiceProvider.GetRequiredService<TransportService>();
+                var army = scope.ServiceProvider.GetRequiredService<ArmyService>();
                 var seed = scope.ServiceProvider.GetRequiredService<SeedService>();
                 var world = scope.ServiceProvider.GetRequiredService<WorldService>();
                 await buildings.RecoverDueAsync(stoppingToken);
                 await marches.RecoverDueAsync(stoppingToken);
                 await transports.RecoverDueAsync(stoppingToken);
+                await army.RecoverDueAsync(stoppingToken);
                 await world.RecoverDueOutpostsAsync(stoppingToken);
                 await seed.EnsureWorldAsync(stoppingToken);
                 await world.TickRoamingAsync(stoppingToken);

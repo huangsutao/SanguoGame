@@ -54,8 +54,13 @@ public sealed class GameplayApiTests
 
         var (_, recruited) = await api.Post<ArmyOverviewDto>("/api/army/recruit", new { troopType = "infantry", count = 5 });
         Assert.Equal(0, recruited.Code);
-        Assert.Equal(5, recruited.Data?.Troops.Infantry);
-        Assert.Contains(recruited.Data!.TroopTypes, t => t.Type == "infantry" && t.RequireBarracksLevel == 1);
+        Assert.NotNull(recruited.Data?.RecruitQueue);
+        Assert.Equal(0, recruited.Data?.Troops.Infantry);
+        await _factory.ForceCompleteRecruitsAsync();
+        var (_, ready) = await api.Get<ArmyOverviewDto>("/api/army");
+        Assert.Equal(5, ready.Data?.Troops.Infantry);
+        Assert.Null(ready.Data?.RecruitQueue);
+        Assert.Contains(ready.Data!.TroopTypes, t => t.Type == "infantry" && t.RequireBarracksLevel == 1);
     }
 
     [SkippableFact]
@@ -69,6 +74,7 @@ public sealed class GameplayApiTests
         await UpgradeAndFinish(api, "barracks");
         var (_, recruited) = await api.Post<ArmyOverviewDto>("/api/army/recruit", new { troopType = "infantry", count = 20 });
         Assert.Equal(0, recruited.Code);
+        await _factory.ForceCompleteRecruitsAsync();
 
         var (ox, oy) = await _factory.PickEmptyCellAsync(x, y);
         var outpostId = await _factory.InsertOutpostAsync(ox, oy);

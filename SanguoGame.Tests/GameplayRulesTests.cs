@@ -2,6 +2,7 @@ using SanguoGame.Core.Army;
 using SanguoGame.Core.Buildings;
 using SanguoGame.Core.Daily;
 using SanguoGame.Core.Market;
+using SanguoGame.Core.Shop;
 using SanguoGame.Core.World;
 using Xunit;
 
@@ -291,5 +292,91 @@ public class DailyScoutRulesTests
     {
         Assert.Equal(15, MarchTiming.ScoutDurationSeconds(0, 0, 3, 0, 10, 30));
         Assert.Equal(5, MarchTiming.ScoutDurationSeconds(0, 0, 0, 1, 5, 10));
+    }
+}
+
+public class ShopRulesTests
+{
+    [Fact]
+    public void ApplySpeed_FiftyPercent_ShortensPalaceFifteenToTen()
+    {
+        Assert.Equal(10, ItemCatalog.ApplySpeed(15, 50));
+        Assert.Equal(15, ItemCatalog.ApplySpeed(15, 0));
+        Assert.Equal(1, ItemCatalog.ApplySpeed(1, 50));
+    }
+
+    [Fact]
+    public void StackExpire_AddsHoursFromRemainingBuff()
+    {
+        var now = new DateTime(2026, 8, 20, 12, 0, 0, DateTimeKind.Utc);
+        var first = ItemCatalog.StackExpireAt(now, null, 5, 1);
+        Assert.Equal(now.AddHours(5), first);
+        var stacked = ItemCatalog.StackExpireAt(now.AddHours(1), first, 5, 1);
+        Assert.Equal(now.AddHours(10), stacked);
+        var two = ItemCatalog.StackExpireAt(now, null, 5, 2);
+        Assert.Equal(now.AddHours(10), two);
+    }
+
+    [Fact]
+    public void ShortenRemaining_AppliesNewPercentOnce()
+    {
+        var now = new DateTime(2026, 8, 20, 12, 0, 0, DateTimeKind.Utc);
+        var finish = now.AddSeconds(15);
+        var shortened = ItemCatalog.ShortenRemaining(finish, now, 0, 50);
+        Assert.Equal(now.AddSeconds(10), shortened);
+        Assert.Equal(shortened, ItemCatalog.ShortenRemaining(shortened, now, 50, 50));
+    }
+
+    [Fact]
+    public void YuanbaoLoot_IsDeterministic_AndWinPaysAtLeastAsMuchAsLoseWhenBothHit()
+    {
+        var win = YuanbaoLoot.Roll(12345, true);
+        var lose = YuanbaoLoot.Roll(12345, false);
+        Assert.Equal(win, YuanbaoLoot.Roll(12345, true));
+        Assert.Equal(lose, YuanbaoLoot.Roll(12345, false));
+        if (win > 0)
+        {
+            Assert.InRange(win, YuanbaoLoot.WinMin, YuanbaoLoot.WinMax);
+        }
+
+        if (lose > 0)
+        {
+            Assert.InRange(lose, YuanbaoLoot.LoseMin, YuanbaoLoot.LoseMax);
+        }
+    }
+
+    [Fact]
+    public void TryBuyCost_RejectsOverflowAndBadCount()
+    {
+        Assert.True(ItemCatalog.TryBuyCost(80, 2, out var total));
+        Assert.Equal(160, total);
+        Assert.False(ItemCatalog.TryBuyCost(80, 0, out _));
+        Assert.False(ItemCatalog.TryBuyCost(80, 100, out _));
+    }
+
+    [Fact]
+    public void FieldPending_SplitsBoostedWindow()
+    {
+        var now = new DateTime(2026, 8, 20, 12, 0, 0, DateTimeKind.Utc);
+        var last = now.AddHours(-2);
+        var expire = now.AddHours(-1);
+        var pending = FieldProduction.Pending(600, 1500, last, now, 50, expire);
+        Assert.Equal(900 + 600, pending);
+    }
+
+    [Fact]
+    public void RecruitTiming_UsesTroopSecondsAndSpeed()
+    {
+        Assert.Equal(10, RecruitTiming.DurationSeconds("infantry", 5, 0));
+        Assert.Equal(7, RecruitTiming.DurationSeconds("infantry", 5, 50));
+    }
+
+    [Fact]
+    public void SpeedKind_MapsBuildings()
+    {
+        Assert.Equal(ItemCatalog.SpeedBuild, ItemCatalog.SpeedKindOf("palace"));
+        Assert.Equal(ItemCatalog.SpeedTech, ItemCatalog.SpeedKindOf("academy"));
+        Assert.Equal(ItemCatalog.SpeedUpgrade, ItemCatalog.SpeedKindOf("farm"));
+        Assert.Equal(ItemCatalog.SpeedUpgrade, ItemCatalog.SpeedKindOf("arrowTower"));
     }
 }

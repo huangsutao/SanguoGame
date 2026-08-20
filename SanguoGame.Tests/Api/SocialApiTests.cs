@@ -107,6 +107,7 @@ public sealed class SocialApiTests
         await UpgradeAndFinish(api, "barracks");
         var (_, recruited) = await api.Post<ArmyOverviewDto>("/api/army/recruit", new { troopType = "infantry", count = 5 });
         Assert.Equal(0, recruited.Code);
+        await _factory.ForceCompleteRecruitsAsync();
     }
 
     private async Task UpgradeAndFinish(ApiClient api, string buildingType)

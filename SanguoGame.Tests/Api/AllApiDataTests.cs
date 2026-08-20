@@ -298,9 +298,13 @@ public sealed class AllApiDataTests
             "/api/army/recruit",
             new { troopType = "infantry", count = 40 });
         Assert.Equal(0, recruited.Code);
-        Assert.Equal(40, recruited.Data?.Troops.Infantry);
+        Assert.NotNull(recruited.Data?.RecruitQueue);
+        Assert.Equal(0, recruited.Data?.Troops.Infantry);
         Assert.Equal(InnerBuildingCatalog.TroopCap(1), recruited.Data?.TroopCap);
         Assert.Equal(520, recruited.Data?.Resources.Grain);
+        await _factory.ForceCompleteRecruitsAsync();
+        var (_, ready) = await attacker.Get<ArmyOverviewDto>("/api/army");
+        Assert.Equal(40, ready.Data?.Troops.Infantry);
 
         var (_, archerBlocked) = await attacker.Post<ArmyOverviewDto>(
             "/api/army/recruit",

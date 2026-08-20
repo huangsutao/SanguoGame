@@ -84,7 +84,8 @@ public sealed record ArmyOverviewDto(
     IReadOnlyList<MarchDto> Marches,
     IReadOnlyList<TroopTypeDto> TroopTypes,
     int TroopPowerBonusPercent = 0,
-    int RecruitDiscountPercent = 0);
+    int RecruitDiscountPercent = 0,
+    RecruitQueueDto? RecruitQueue = null);
 
 public sealed record BattleReportDto(
     long Id,
@@ -100,7 +101,8 @@ public sealed record BattleReportDto(
     ResourceDto Loot,
     int Seed,
     string Summary,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    int Yuanbao = 0);
 
 public sealed record WorldCityDto(
     long Id,

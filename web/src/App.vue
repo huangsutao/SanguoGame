@@ -42,7 +42,10 @@ import {
   aidMarket,
   scout,
   fetchDaily,
-  claimDaily
+  claimDaily,
+  fetchShop,
+  buyShopItem,
+  useShopItem
 } from "./api/game";
 import { createGameHub } from "./api/hub";
 import { ApiError } from "./api/types";
@@ -66,7 +69,9 @@ import type {
   MarketsOverviewDto,
   MarchDto,
   TroopDto,
-  DailyOverviewDto
+  DailyOverviewDto,
+  ShopOverviewDto,
+  ShopCatalogItemDto
 } from "./api/types";
 import { clearTokens, getAccessToken, getRefreshToken, saveTokens, setUnauthorizedHandler } from "./session";
 import type { HubConnection } from "@microsoft/signalr";
@@ -78,7 +83,9 @@ const busy = ref(false);
 const error = ref("");
 const notice = ref("");
 const mode = ref<"login" | "register">("login");
-const tab = ref<"city" | "army" | "daily" | "map" | "reports" | "mail" | "ranks" | "alliance" | "market">("city");
+const tab = ref<"city" | "army" | "daily" | "map" | "reports" | "mail" | "ranks" | "alliance" | "market" | "shop">(
+  "city"
+);
 const session = ref<SessionResponse | null>(null);
 const overview = ref<BuildingsOverviewDto | null>(null);
 const fields = ref<FieldsOverviewDto | null>(null);
@@ -114,6 +121,10 @@ const aidWood = ref(0);
 const aidIron = ref(0);
 const aidCopper = ref(0);
 const daily = ref<DailyOverviewDto | null>(null);
+const shop = ref<ShopOverviewDto | null>(null);
+const shopBuyCount = ref<Record<string, number>>({});
+const relocateX = ref(0);
+const relocateY = ref(0);
 
 const username = ref("");
 const password = ref("");
@@ -409,6 +420,28 @@ async function loadDaily(): Promise<void> {
   daily.value = await fetchDaily();
 }
 
+async function loadShop(): Promise<void> {
+  const data = await fetchShop();
+  if (!shop.value) {
+    relocateX.value = data.x;
+    relocateY.value = data.y;
+  }
+  shop.value = data;
+  if (session.value?.city) {
+    session.value = {
+      ...session.value,
+      city: {
+        ...session.value.city,
+        x: data.x,
+        y: data.y
+      }
+    };
+  }
+  if (data.protectionUntil && army.value) {
+    army.value = { ...army.value, protectionUntil: data.protectionUntil };
+  }
+}
+
 async function loadReports(page = 1, append = false): Promise<void> {
   const data = await fetchReports(page);
   reports.value = append && reports.value
@@ -466,7 +499,8 @@ async function loadAll(): Promise<void> {
     loadRankings(),
     loadAlliance(),
     loadMarkets(),
-    loadDaily()
+    loadDaily(),
+    loadShop()
   ]);
 }
 
@@ -498,6 +532,11 @@ async function connectHub(): Promise<void> {
     error.value = "";
     notice.value = "收到同盟资源";
   });
+  hub.on("RecruitComplete", () => {
+    void loadArmy();
+    error.value = "";
+    notice.value = "征兵完成";
+  });
   hub.onreconnected(() => {
     void loadAll();
   });
@@ -511,6 +550,7 @@ async function disconnectHub(): Promise<void> {
     hub.off("CityAttacked");
     hub.off("TransportArrived");
     hub.off("ResourceReceived");
+    hub.off("RecruitComplete");
     await hub.stop();
     hub = null;
   }
@@ -532,6 +572,7 @@ onMounted(async () => {
     alliancePending.value = null;
     markets.value = null;
     daily.value = null;
+    shop.value = null;
     void disconnectHub();
   });
 
@@ -581,6 +622,7 @@ watch(hasCity, async (ready) => {
     alliancePending.value = null;
     markets.value = null;
     daily.value = null;
+    shop.value = null;
     await disconnectHub();
     return;
   }
@@ -599,6 +641,9 @@ watch(tab, (value) => {
   }
   if (value === "daily" && hasCity.value) {
     void loadDaily().catch(fail);
+  }
+  if (value === "shop" && hasCity.value) {
+    void loadShop().catch(fail);
   }
 });
 
@@ -750,7 +795,9 @@ async function submitRecruit(): Promise<void> {
     army.value = await recruit(recruitType.value, recruitCount.value);
     overview.value = await fetchBuildings();
     await loadDaily();
-    notice.value = `已征${recruitCount.value}名${troopLabel[recruitType.value] ?? "士兵"}`;
+    notice.value = army.value.recruitQueue
+      ? `已下达征兵 ${recruitCount.value} 名${troopLabel[recruitType.value] ?? "士兵"}，剩余 ${remainText(army.value.recruitQueue.finishAt)}`
+      : `已征${recruitCount.value}名${troopLabel[recruitType.value] ?? "士兵"}`;
   } catch (err) {
     fail(err);
   } finally {
@@ -998,6 +1045,40 @@ async function submitAllianceNotice(): Promise<void> {
   });
 }
 
+function shopCount(type: string): number {
+  const value = shopBuyCount.value[type];
+  if (!Number.isFinite(value) || value < 1) {
+    return 1;
+  }
+  return Math.min(99, Math.floor(value));
+}
+
+async function submitBuy(item: ShopCatalogItemDto): Promise<void> {
+  await run(async () => {
+    shop.value = await buyShopItem(item.type, shopCount(item.type));
+    notice.value = `已购买 ${item.name} × ${shopCount(item.type)}`;
+  });
+}
+
+async function submitUse(item: ShopCatalogItemDto): Promise<void> {
+  await run(async () => {
+    const count = item.kind === "buff" ? shopCount(item.type) : 1;
+    if (item.type === "relocateTarget") {
+      shop.value = await useShopItem(item.type, 1, relocateX.value, relocateY.value);
+    } else {
+      shop.value = await useShopItem(item.type, count);
+    }
+    if (session.value?.city && shop.value) {
+      session.value = {
+        ...session.value,
+        city: { ...session.value.city, x: shop.value.x, y: shop.value.y }
+      };
+    }
+    await Promise.all([loadCity(), loadArmy(), loadWorld(), loadShop()]);
+    notice.value = item.type.startsWith("relocate") ? "迁城成功" : `已使用 ${item.name}`;
+  });
+}
+
 async function submitLogout(): Promise<void> {
   error.value = "";
   const refresh = getRefreshToken();
@@ -1025,6 +1106,7 @@ async function submitLogout(): Promise<void> {
     password.value = "";
     markets.value = null;
     daily.value = null;
+    shop.value = null;
   }
 }
 </script>
@@ -1044,8 +1126,8 @@ async function submitLogout(): Promise<void> {
             <h1>战国</h1>
             <p class="city-name">
               {{ session?.city?.name }} · ({{ session?.city?.x }}, {{ session?.city?.y }})
-              <span v-if="protectionText(army?.protectionUntil)" class="protect">
-                {{ protectionText(army?.protectionUntil) }}
+              <span v-if="protectionText(army?.protectionUntil ?? shop?.protectionUntil)" class="protect">
+                {{ protectionText(army?.protectionUntil ?? shop?.protectionUntil) }}
               </span>
             </p>
           </div>
@@ -1055,6 +1137,10 @@ async function submitLogout(): Promise<void> {
             <img :src="resourceArt[key]" :alt="resourceLabel[key]" />
             <b>{{ hudResources[key] }}</b>
             <small>{{ resourceLabel[key] }}</small>
+          </span>
+          <span class="res-chip yuanbao">
+            <b>{{ shop?.yuanbao ?? 0 }}</b>
+            <small>元宝</small>
           </span>
         </div>
         <div class="who">
@@ -1071,6 +1157,7 @@ async function submitLogout(): Promise<void> {
         </button>
         <button type="button" :class="{ active: tab === 'map' }" @click="tab = 'map'">地图</button>
         <button type="button" :class="{ active: tab === 'market' }" @click="tab = 'market'">市集</button>
+        <button type="button" :class="{ active: tab === 'shop' }" @click="tab = 'shop'">商城</button>
         <button type="button" :class="{ active: tab === 'reports' }" @click="tab = 'reports'">战报</button>
         <button type="button" :class="{ active: tab === 'mail' }" @click="tab = 'mail'">
           邮件{{ mail?.unreadCount ? ` ${mail.unreadCount}` : "" }}
@@ -1081,6 +1168,10 @@ async function submitLogout(): Promise<void> {
       <p v-if="queue" class="queue-banner">
         建造中：{{ queueName(queue.buildingType) }} → {{ queue.targetLevel }} 级，剩余
         {{ remainText(queue.finishAt) }}
+      </p>
+      <p v-if="army?.recruitQueue" class="queue-banner">
+        征兵中：{{ troopLabel[army.recruitQueue.troopType] ?? army.recruitQueue.troopType }}
+        × {{ army.recruitQueue.count }}，剩余 {{ remainText(army.recruitQueue.finishAt) }}
       </p>
     </div>
 
@@ -1316,7 +1407,7 @@ async function submitLogout(): Promise<void> {
                 数量
                 <input v-model.number="recruitCount" type="number" min="1" max="100" />
               </label>
-              <button type="button" :disabled="busy" @click="submitRecruit">征兵</button>
+              <button type="button" :disabled="busy || Boolean(army.recruitQueue)" @click="submitRecruit">征兵</button>
             </div>
             <div v-if="selectedTroop" class="cost-row">
               <span v-for="key in resourceKeys" :key="key" class="cost-chip">
@@ -1326,7 +1417,11 @@ async function submitLogout(): Promise<void> {
               <span class="cost-chip time">兵营 ≥ {{ selectedTroop.requireBarracksLevel }}</span>
               <span v-if="army.recruitDiscountPercent" class="hint">征兵减免 {{ army.recruitDiscountPercent }}%</span>
             </div>
-            <p v-else class="hint">步兵需兵营 1 级，弓兵 2 级，骑兵 3 级。征兵即时扣资源。</p>
+            <p v-if="army.recruitQueue" class="hint">
+              征兵中 {{ troopLabel[army.recruitQueue.troopType] ?? army.recruitQueue.troopType }}
+              × {{ army.recruitQueue.count }}，剩余 {{ remainText(army.recruitQueue.finishAt) }}
+            </p>
+            <p v-else class="hint">步兵需兵营 1 级，弓兵 2 级，骑兵 3 级。下达后扣资源，到点入帐。</p>
             <h3>出征 / 侦察</h3>
             <p :class="selectedProtected ? 'lose' : 'hint'">
               {{ selected ? `目标：${selected.label}` : "在地图点选据点或其他玩家城" }}
@@ -1476,6 +1571,49 @@ async function submitLogout(): Promise<void> {
             </ul>
           </section>
 
+          <section v-if="tab === 'shop' && shop" class="block">
+            <h2>商城</h2>
+            <p class="hint">用元宝购买道具。加速与丰收令持续 5 小时，重复使用时间累加。元宝从出征掠夺中按概率获得，胜多负少。</p>
+            <p v-if="shop.buffs.length" class="hint">
+              生效中：
+              <span v-for="buff in shop.buffs" :key="buff.type">
+                {{ buff.name }} {{ remainText(buff.expireAt) }}（+{{ buff.speedPercent }}%）
+              </span>
+            </p>
+            <p v-else class="hint">当前没有生效中的时效道具。</p>
+            <div class="form inline">
+              <label>目标 X <input v-model.number="relocateX" type="number" min="0" /></label>
+              <label>目标 Y <input v-model.number="relocateY" type="number" min="0" /></label>
+              <span class="hint">仅高级迁城令使用；当前 ({{ shop.x }}, {{ shop.y }})</span>
+            </div>
+            <ul class="buildings">
+              <li v-for="item in shop.catalog" :key="item.type">
+                <div>
+                  <strong>{{ item.name }}</strong>
+                  <span class="meta">{{ item.price }} 元宝 · 拥有 {{ item.owned }}</span>
+                  <p class="hint">{{ item.description }}</p>
+                </div>
+                <div class="actions">
+                  <input
+                    v-model.number="shopBuyCount[item.type]"
+                    type="number"
+                    min="1"
+                    max="99"
+                    placeholder="1"
+                  />
+                  <button
+                    type="button"
+                    :disabled="busy || shop.yuanbao < item.price * shopCount(item.type)"
+                    @click="submitBuy(item)"
+                  >
+                    购买
+                  </button>
+                  <button type="button" :disabled="busy || item.owned < 1" @click="submitUse(item)">使用</button>
+                </div>
+              </li>
+            </ul>
+          </section>
+
           <section v-if="tab === 'reports'" class="block">
             <h2>战报</h2>
             <p v-if="!reports?.items.length" class="hint">暂无战报</p>
@@ -1487,6 +1625,7 @@ async function submitLogout(): Promise<void> {
                   <p class="hint">
                     攻 {{ troopLine(item.attackerBefore) }} → {{ troopLine(item.attackerAfter) }} /
                     守 {{ troopLine(item.defenderBefore) }} → {{ troopLine(item.defenderAfter) }}
+                    <template v-if="item.yuanbao"> · 元宝 +{{ item.yuanbao }}</template>
                   </p>
                 </div>
               </li>

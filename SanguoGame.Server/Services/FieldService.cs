@@ -3,6 +3,7 @@ using FreeSql;
 using SanguoGame.Core;
 using SanguoGame.Core.Buildings;
 using SanguoGame.Core.Daily;
+using SanguoGame.Core.Shop;
 using SanguoGame.Infrastructure.Entities;
 using SanguoGame.Server.Contracts;
 
@@ -65,6 +66,9 @@ public sealed class FieldService
             var byType = rows.ToDictionary(b => b.Type, StringComparer.OrdinalIgnoreCase);
             var warehouseLevel = byType.TryGetValue("warehouse", out var warehouse) ? warehouse.Level : 0;
             var resourceHallLevel = byType.TryGetValue(TechBonuses.ResourceHall, out var hall) ? hall.Level : 0;
+            var buffs = await CityBuffStore.LoadAsync(_orm, lockedCity.Id, ct, transaction);
+            var itemPercent = ItemCatalog.ResourceBoostOf(buffs, now);
+            var itemExpire = ItemCatalog.ResourceBoostExpireAt(buffs, now);
             var resourceCap = InnerBuildingCatalog.ResourceCap(warehouseLevel);
             var stock = ToAmount(lockedCity);
             var gained = ResourceAmount.Zero;
@@ -90,7 +94,9 @@ public sealed class FieldService
                     rate,
                     TechBonuses.BoostedCap(def, entity.Level, resourceHallLevel),
                     entity.LastCollectedAt,
-                    now);
+                    now,
+                    itemPercent,
+                    itemExpire);
                 if (pending <= 0)
                 {
                     continue;
@@ -105,7 +111,10 @@ public sealed class FieldService
 
                 stock = stock.Add(def.Resource, take);
                 gained = gained.Add(def.Resource, take);
-                entity.LastCollectedAt = FieldProduction.AfterCollect(now, pending - take, rate);
+                var collectRate = itemExpire is { } until && until > now
+                    ? TechBonuses.ApplyPercent(rate, itemPercent)
+                    : rate;
+                entity.LastCollectedAt = FieldProduction.AfterCollect(now, pending - take, collectRate);
                 entity.UpdatedAt = now;
                 await UpdateBuildingAsync(transaction, entity, ct);
             }
@@ -149,11 +158,17 @@ public sealed class FieldService
         var rows = await _orm.Select<BuildingEntity>()
             .Where(b => b.CityId == city.Id)
             .ToListAsync(cancellationToken);
-        return MapOverview(city, rows, now);
+        var buffs = await CityBuffStore.LoadAsync(_orm, city.Id, cancellationToken);
+        return MapOverview(city, rows, now, buffs);
     }
 
-    internal static FieldsOverviewDto MapOverview(CityEntity city, IReadOnlyList<BuildingEntity> rows, DateTime now)
+    internal static FieldsOverviewDto MapOverview(
+        CityEntity city,
+        IReadOnlyList<BuildingEntity> rows,
+        DateTime now,
+        IReadOnlyList<ActiveBuff>? buffs = null)
     {
+        buffs ??= [];
         var byType = rows.ToDictionary(b => b.Type, StringComparer.OrdinalIgnoreCase);
         var palaceLevel = byType.TryGetValue("palace", out var palace) ? palace.Level : 0;
         var warehouseLevel = byType.TryGetValue("warehouse", out var warehouse) ? warehouse.Level : 0;
@@ -162,6 +177,9 @@ public sealed class FieldService
         var stock = ToAmount(city);
         var queueBusy = queueRow is not null;
         var resourceCap = InnerBuildingCatalog.ResourceCap(warehouseLevel);
+        var itemPercent = ItemCatalog.ResourceBoostOf(buffs, now);
+        var itemExpire = ItemCatalog.ResourceBoostExpireAt(buffs, now);
+        var upgradeSpeed = ItemCatalog.SpeedPercentOf("farm", buffs, now);
 
         BuildingQueueDto? queue = null;
         if (queueRow is { TargetLevel: int qLevel, FinishAt: { } qFinish })
@@ -179,7 +197,10 @@ public sealed class FieldService
             string? blocked = null;
             var rate = TechBonuses.BoostedRate(def, level, resourceHallLevel);
             var fieldCap = TechBonuses.BoostedCap(def, level, resourceHallLevel);
-            var pending = FieldProduction.Pending(rate, fieldCap, entity?.LastCollectedAt, now);
+            var pending = FieldProduction.Pending(rate, fieldCap, entity?.LastCollectedAt, now, itemPercent, itemExpire);
+            var shownRate = itemExpire is { } until && until > now
+                ? TechBonuses.ApplyPercent(rate, itemPercent)
+                : rate;
 
             if (level >= def.MaxLevel)
             {
@@ -190,7 +211,7 @@ public sealed class FieldService
                 var cost = InnerBuildingCatalog.CostToReach(def.AsUpgradeDef(), nextLevel);
                 next = new BuildingCostDto(
                     nextLevel,
-                    InnerBuildingCatalog.DurationSeconds(def.AsUpgradeDef(), nextLevel),
+                    ItemCatalog.ApplySpeed(InnerBuildingCatalog.DurationSeconds(def.AsUpgradeDef(), nextLevel), upgradeSpeed),
                     new ResourceDto(cost.Grain, cost.Wood, cost.Iron, cost.Copper));
 
                 if (status == BuildingStatus.Upgrading)
@@ -220,7 +241,7 @@ public sealed class FieldService
                 status,
                 entity?.TargetLevel,
                 entity?.FinishAt,
-                rate,
+                shownRate,
                 fieldCap,
                 pending,
                 entity?.LastCollectedAt,

@@ -8,6 +8,7 @@ using SanguoGame.Core.Army;
 using SanguoGame.Core.Buildings;
 using SanguoGame.Core.World;
 using SanguoGame.Core.Daily;
+using SanguoGame.Core.Shop;
 using SanguoGame.Core.Social;
 using SanguoGame.Infrastructure.Entities;
 using SanguoGame.Server.Contracts;
@@ -337,7 +338,6 @@ public sealed class MarchService
             {
                 loot = Deposit(attacker, def.Loot, InnerBuildingCatalog.ResourceCap(warehouse));
                 ReturnTroops(attacker, outcome.AttackerAfter, InnerBuildingCatalog.TroopCap(barracks));
-                await SaveCityAsync(transaction, attacker, ct);
                 if (outpost.Kind == OutpostKind.Roaming)
                 {
                     await _orm.Delete<OutpostEntity>().WithTransaction(transaction).Where(o => o.Id == outpost.Id).ExecuteAffrowsAsync(ct);
@@ -350,18 +350,32 @@ public sealed class MarchService
                 }
 
                 var summary = $"攻克{outpost.Name}，缴获粮{loot.Grain} 木{loot.Wood} 铁{loot.Iron} 铜{loot.Copper}";
+                var yuanbao = GrantYuanbao(attacker, outcome);
+                if (yuanbao > 0)
+                {
+                    summary += $"，获元宝{yuanbao}";
+                }
+
+                await SaveCityAsync(transaction, attacker, ct);
                 var report = await PersistAsync(
-                    transaction, current, outcome, loot, summary, attacker.CharacterId, null, ct);
+                    transaction, current, outcome, loot, summary, attacker.CharacterId, null, ct, yuanbao);
                 await _daily.AddProgressAsync(attacker.Id, DailyCatalog.Raid, 1, ct, transaction);
                 return report;
             }
 
             outpost.Garrison = outcome.DefenderAfter.Infantry;
             ReturnTroops(attacker, outcome.AttackerAfter, InnerBuildingCatalog.TroopCap(barracks));
+            var loseSummary = $"攻打{outpost.Name}失利";
+            var loseYuanbao = GrantYuanbao(attacker, outcome);
+            if (loseYuanbao > 0)
+            {
+                loseSummary += $"，获元宝{loseYuanbao}";
+            }
+
             await SaveCityAsync(transaction, attacker, ct);
             await _orm.Update<OutpostEntity>().WithTransaction(transaction).SetSource(outpost).ExecuteAffrowsAsync(ct);
             return await PersistAsync(
-                transaction, current, outcome, loot, $"攻打{outpost.Name}失利", attacker.CharacterId, null, ct);
+                transaction, current, outcome, loot, loseSummary, attacker.CharacterId, null, ct, loseYuanbao);
         }, cancellationToken);
     }
 
@@ -422,7 +436,15 @@ public sealed class MarchService
             var loot = ResourceAmount.Zero;
             if (outcome.AttackerWon)
             {
-                loot = LootPlayer(defender, defBuildings, attacker, InnerBuildingCatalog.ResourceCap(atkWarehouse), now);
+                var defBuffs = await CityBuffStore.LoadAsync(_orm, defender.Id, ct, transaction);
+                loot = LootPlayer(
+                    defender,
+                    defBuildings,
+                    attacker,
+                    InnerBuildingCatalog.ResourceCap(atkWarehouse),
+                    now,
+                    ItemCatalog.ResourceBoostOf(defBuffs, now),
+                    ItemCatalog.ResourceBoostExpireAt(defBuffs, now));
                 defender.ProtectionUntil = now.AddSeconds(_map.ProtectionSeconds);
                 foreach (var building in defBuildings.Where(b => OuterFieldCatalog.IsField(b.Type)))
                 {
@@ -436,13 +458,19 @@ public sealed class MarchService
 
             ReturnTroops(attacker, outcome.AttackerAfter, InnerBuildingCatalog.TroopCap(atkBarracks));
             CityStats.ApplyTroops(defender, CityStats.FitCap(outcome.DefenderAfter, InnerBuildingCatalog.TroopCap(defBarracks)));
-            await SaveCityAsync(transaction, attacker, ct);
-            await SaveCityAsync(transaction, defender, ct);
             var summary = outcome.AttackerWon
                 ? $"攻打{defender.Name}获胜，掠夺粮{loot.Grain} 木{loot.Wood} 铁{loot.Iron} 铜{loot.Copper}"
                 : $"攻打{defender.Name}失利";
+            var yuanbao = GrantYuanbao(attacker, outcome);
+            if (yuanbao > 0)
+            {
+                summary += $"，获元宝{yuanbao}";
+            }
+
+            await SaveCityAsync(transaction, attacker, ct);
+            await SaveCityAsync(transaction, defender, ct);
             return await PersistAsync(
-                transaction, current, outcome, loot, summary, attacker.CharacterId, defender.CharacterId, ct);
+                transaction, current, outcome, loot, summary, attacker.CharacterId, defender.CharacterId, ct, yuanbao);
         }, cancellationToken);
     }
 
@@ -636,7 +664,9 @@ public sealed class MarchService
         IReadOnlyList<BuildingEntity> buildings,
         CityEntity attacker,
         int attackerCap,
-        DateTime now)
+        DateTime now,
+        int resourceBoostPercent = 0,
+        DateTime? resourceBoostExpireAt = null)
     {
         var byType = buildings.ToDictionary(b => b.Type, StringComparer.OrdinalIgnoreCase);
         var fields = new List<FieldLootInput>();
@@ -657,7 +687,9 @@ public sealed class MarchService
             attackerCap,
             fields,
             now,
-            TechBonuses.ProductionPercent(hallLevel));
+            TechBonuses.ProductionPercent(hallLevel),
+            resourceBoostPercent,
+            resourceBoostExpireAt);
         CityStats.ApplyStock(attacker, result.AttackerStockAfter);
         CityStats.ApplyStock(defender, result.DefenderStockAfter);
         foreach (var update in result.FieldUpdates)
@@ -713,7 +745,8 @@ public sealed class MarchService
         string summary,
         long attackerCharacterId,
         long? defenderCharacterId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int yuanbao = 0)
     {
         march.Status = MarchStatus.Settled;
         await _orm.Update<MarchEntity>()
@@ -745,6 +778,7 @@ public sealed class MarchService
             LootWood = loot.Wood,
             LootIron = loot.Iron,
             LootCopper = loot.Copper,
+            Yuanbao = yuanbao,
             Seed = outcome.Seed,
             Summary = summary,
             CreatedAt = DateTime.UtcNow
@@ -812,7 +846,8 @@ public sealed class MarchService
                 c.Infantry,
                 c.Archer,
                 c.Cavalry,
-                c.ProtectionUntil
+                c.ProtectionUntil,
+                c.Yuanbao
             })
             .ExecuteAffrowsAsync(cancellationToken);
 
@@ -831,7 +866,15 @@ public sealed class MarchService
             new ResourceDto(row.LootGrain, row.LootWood, row.LootIron, row.LootCopper),
             row.Seed,
             row.Summary,
-            row.CreatedAt);
+            row.CreatedAt,
+            row.Yuanbao);
+
+    private static int GrantYuanbao(CityEntity attacker, BattleOutcome outcome)
+    {
+        var gained = YuanbaoLoot.Roll(outcome.Seed, outcome.AttackerWon);
+        attacker.Yuanbao = YuanbaoLoot.Grant(attacker.Yuanbao, gained);
+        return gained;
+    }
 
     private static int SeedOf(long marchId) => unchecked((int)(marchId * 1103515245 + 12345));
 }

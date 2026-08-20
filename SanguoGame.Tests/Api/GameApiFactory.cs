@@ -181,6 +181,8 @@ public sealed class GameApiFactory : WebApplicationFactory<Program>, IAsyncLifet
                 sg_alliance_member,
                 sg_alliance,
                 sg_daily_quest,
+                sg_item,
+                sg_buff,
                 sg_mail,
                 sg_battle_report,
                 sg_march,
@@ -205,6 +207,18 @@ public sealed class GameApiFactory : WebApplicationFactory<Program>, IAsyncLifet
             .Set(b => b.FinishAt, DateTime.UtcNow.AddMinutes(-1))
             .ExecuteAffrowsAsync();
         await scope.ServiceProvider.GetRequiredService<BuildingService>()
+            .RecoverDueAsync(CancellationToken.None);
+    }
+
+    public async Task ForceCompleteRecruitsAsync()
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var orm = scope.ServiceProvider.GetRequiredService<IFreeSql>();
+        await orm.Update<CityEntity>()
+            .Where(c => c.RecruitFinishAt != null)
+            .Set(c => c.RecruitFinishAt, DateTime.UtcNow.AddMinutes(-1))
+            .ExecuteAffrowsAsync();
+        await scope.ServiceProvider.GetRequiredService<ArmyService>()
             .RecoverDueAsync(CancellationToken.None);
     }
 
@@ -335,6 +349,20 @@ public sealed class GameApiFactory : WebApplicationFactory<Program>, IAsyncLifet
         if (updated != 1)
         {
             throw new InvalidOperationException($"未能写入城资源 cityId={cityId}");
+        }
+    }
+
+    public async Task SetCityYuanbaoAsync(long cityId, int yuanbao)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var orm = scope.ServiceProvider.GetRequiredService<IFreeSql>();
+        var updated = await orm.Update<CityEntity>()
+            .Where(c => c.Id == cityId)
+            .Set(c => c.Yuanbao, yuanbao)
+            .ExecuteAffrowsAsync();
+        if (updated != 1)
+        {
+            throw new InvalidOperationException($"未能写入元宝 cityId={cityId}");
         }
     }
 

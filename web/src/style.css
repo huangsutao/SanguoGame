@@ -167,9 +167,9 @@ body {
   font-size: 0.95rem;
 }
 
-.res-chip small {
-  color: var(--muted);
-  font-size: 0.75rem;
+.res-chip.yuanbao {
+  min-width: 88px;
+  background: #2a1a08;
 }
 
 .cap-line {

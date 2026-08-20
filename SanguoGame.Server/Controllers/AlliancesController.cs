@@ -31,7 +31,7 @@ public sealed class AlliancesController : ControllerBase
         ApiResult.Ok(await _alliances.ListAsync(query, cancellationToken));
 
     [HttpGet("me")]
-    public async Task<ApiResult<AllianceDetailDto>> Me(CancellationToken cancellationToken) =>
+    public async Task<ApiResult<AllianceDetailDto?>> Me(CancellationToken cancellationToken) =>
         ApiResult.Ok(await _alliances.GetMineAsync(User.GetAccountId(), cancellationToken));
 
     [HttpGet("pending")]

@@ -473,20 +473,15 @@ async function loadRankings(): Promise<void> {
 }
 
 async function loadAlliance(): Promise<void> {
-  const [list, pending] = await Promise.all([fetchAlliances(), fetchAlliancePending()]);
+  const [list, pending, mine] = await Promise.all([
+    fetchAlliances(),
+    fetchAlliancePending(),
+    fetchMyAlliance()
+  ]);
   allianceList.value = list;
   alliancePending.value = pending;
-  try {
-    alliance.value = await fetchMyAlliance();
-    allianceNoticeDraft.value = alliance.value.notice ?? "";
-  } catch (err) {
-    if (err instanceof ApiError && err.code === 40922) {
-      alliance.value = null;
-      allianceNoticeDraft.value = "";
-      return;
-    }
-    throw err;
-  }
+  alliance.value = mine;
+  allianceNoticeDraft.value = mine?.notice ?? "";
 }
 
 async function loadAll(): Promise<void> {

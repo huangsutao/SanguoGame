@@ -444,7 +444,8 @@ public sealed class AllApiDataTests
         Assert.Equal(1, detail.Data?.MemberCount);
 
         var (_, none) = await guest.Get<AllianceDetailDto>("/api/alliances/me");
-        Assert.Equal(ErrorCodes.NotInAlliance, none.Code);
+        Assert.Equal(0, none.Code);
+        Assert.Null(none.Data);
 
         var (_, invited) = await leader.Post<object?>("/api/alliances/invite", new { characterName = g.CharacterName });
         Assert.Equal(0, invited.Code);
@@ -490,7 +491,8 @@ public sealed class AllApiDataTests
         var (_, kicked) = await leader.Post<object?>("/api/alliances/kick", new { characterId = e.CharacterId });
         Assert.Equal(0, kicked.Code);
         var (_, extraMe) = await extra.Get<AllianceDetailDto>("/api/alliances/me");
-        Assert.Equal(ErrorCodes.NotInAlliance, extraMe.Code);
+        Assert.Equal(0, extraMe.Code);
+        Assert.Null(extraMe.Data);
         var (_, extraMail) = await extra.Get<MailListDto>("/api/mail");
         Assert.Contains(extraMail.Data!.Items, mail => mail.Body.Contains("移出"));
 
@@ -506,7 +508,8 @@ public sealed class AllApiDataTests
         var (_, dissolved) = await leader.Post<object?>("/api/alliances/dissolve");
         Assert.Equal(0, dissolved.Code);
         var (_, gone) = await leader.Get<AllianceDetailDto>("/api/alliances/me");
-        Assert.Equal(ErrorCodes.NotInAlliance, gone.Code);
+        Assert.Equal(0, gone.Code);
+        Assert.Null(gone.Data);
         var (_, listAfter) = await leader.Get<PagedResult<AllianceSummaryDto>>("/api/alliances?page=1&pageSize=100");
         Assert.DoesNotContain(listAfter.Data!.Items, a => a.Id == created.Data.Id);
     }
@@ -532,7 +535,8 @@ public sealed class AllApiDataTests
         var (_, left) = await leader.Post<object?>("/api/alliances/leave");
         Assert.Equal(0, left.Code);
         var (_, gone) = await leader.Get<AllianceDetailDto>("/api/alliances/me");
-        Assert.Equal(ErrorCodes.NotInAlliance, gone.Code);
+        Assert.Equal(0, gone.Code);
+        Assert.Null(gone.Data);
 
         var (_, mine) = await member.Get<AllianceDetailDto>("/api/alliances/me");
         Assert.Equal(0, mine.Code);
@@ -555,7 +559,8 @@ public sealed class AllApiDataTests
         var (_, left) = await api.Post<object?>("/api/alliances/leave");
         Assert.Equal(0, left.Code);
         var (_, me) = await api.Get<AllianceDetailDto>("/api/alliances/me");
-        Assert.Equal(ErrorCodes.NotInAlliance, me.Code);
+        Assert.Equal(0, me.Code);
+        Assert.Null(me.Data);
     }
 
     [SkippableFact]

@@ -136,8 +136,8 @@ export function fetchAlliances(page = 1): Promise<PagedResult<AllianceSummaryDto
   return request<PagedResult<AllianceSummaryDto>>("get", `/api/alliances?page=${page}&pageSize=20`);
 }
 
-export function fetchMyAlliance(): Promise<AllianceDetailDto> {
-  return request<AllianceDetailDto>("get", "/api/alliances/me");
+export async function fetchMyAlliance(): Promise<AllianceDetailDto | null> {
+  return (await request<AllianceDetailDto | null>("get", "/api/alliances/me")) ?? null;
 }
 
 export function fetchAlliancePending(): Promise<AlliancePendingDto> {

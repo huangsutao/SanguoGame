@@ -122,12 +122,13 @@ public sealed class AllianceService
         };
     }
 
-    public async Task<AllianceDetailDto> GetMineAsync(long accountId, CancellationToken cancellationToken)
+    public async Task<AllianceDetailDto?> GetMineAsync(long accountId, CancellationToken cancellationToken)
     {
         var character = await RequireCharacterAsync(accountId, cancellationToken);
-        var member = await FindMemberAsync(character.Id, cancellationToken)
-            ?? throw new BizException(ErrorCodes.NotInAlliance, "未加入联盟");
-        return await GetDetailAsync(member.AllianceId, character.Id, cancellationToken);
+        var member = await FindMemberAsync(character.Id, cancellationToken);
+        return member is null
+            ? null
+            : await GetDetailAsync(member.AllianceId, character.Id, cancellationToken);
     }
 
     public async Task<AllianceDetailDto> GetAsync(long accountId, long allianceId, CancellationToken cancellationToken)

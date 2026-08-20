@@ -147,13 +147,14 @@ public class Program
 
         if (!testing)
         {
+            var recurringJobs = app.Services.GetRequiredService<IRecurringJobManager>();
             var aiTickMinutes = Math.Max(1, app.Configuration.GetValue("WorldMap:AiTickMinutes", 5));
-            RecurringJob.AddOrUpdate<AiTickJob>(
+            recurringJobs.AddOrUpdate<AiTickJob>(
                 "ai-tick",
                 job => job.Execute(),
                 $"*/{aiTickMinutes} * * * *");
             var roamingTickMinutes = Math.Max(1, app.Configuration.GetValue("WorldMap:RoamingOutpostTickMinutes", 1));
-            RecurringJob.AddOrUpdate<RoamingOutpostJob>(
+            recurringJobs.AddOrUpdate<RoamingOutpostJob>(
                 "roaming-outpost-tick",
                 job => job.Execute(),
                 $"*/{roamingTickMinutes} * * * *");

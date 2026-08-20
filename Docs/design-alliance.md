@@ -58,7 +58,7 @@ Invite / Application：pending / accepted / declined
 |------|------|------|
 | POST | `/api/alliances` | `{ "name" }` 创建 |
 | GET | `/api/alliances` | 分页列表 |
-| GET | `/api/alliances/me` | 我的联盟；未加入 → `40922` |
+| GET | `/api/alliances/me` | 我的联盟；未加入 → `data: null` |
 | GET | `/api/alliances/pending` | 我收到的邀请；若是官员/盟主还带本盟申请 |
 | GET | `/api/alliances/{id}` | 详情（含成员） |
 | POST | `/api/alliances/{id}/apply` | 申请 |
@@ -82,7 +82,7 @@ Invite / Application：pending / accepted / declined
 | `40919` | 已加入联盟 |
 | `40920` | 联盟名占用 |
 | `40921` | 满员 |
-| `40922` | 未加入联盟 |
+| `40922` | 退出、解散、运输等需要入盟的操作；查询 `/me` 未加入返回 `data: null` |
 | `40923` | 权限不足 |
 | `40924` | 邀请或申请已失效 |
 | `40400` | 联盟 / 角色 / 邀请不存在；尚未建城 |

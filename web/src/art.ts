@@ -33,7 +33,10 @@ export const markerArt = {
   city: "/art/marker-city.jpg",
   outpost: "/art/marker-outpost.jpg",
   roaming: "/art/marker-roaming.jpg",
-  market: "/art/marker-market.jpg"
+  market: "/art/marker-market.jpg",
+  march: "/art/marker-march.jpg",
+  march2: "/art/marker-march-2.jpg",
+  cart: "/art/marker-cart.jpg"
 };
 
 export const resourceKeys = ["grain", "wood", "iron", "copper"] as const;

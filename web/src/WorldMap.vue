@@ -23,7 +23,10 @@ const sprites = {
   city: loadSprite(markerArt.city),
   outpost: loadSprite(markerArt.outpost),
   roaming: loadSprite(markerArt.roaming),
-  market: loadSprite(markerArt.market)
+  market: loadSprite(markerArt.market),
+  march: loadSprite(markerArt.march),
+  march2: loadSprite(markerArt.march2),
+  cart: loadSprite(markerArt.cart)
 };
 
 function loadSprite(src: string): HTMLImageElement {
@@ -96,8 +99,39 @@ function draw(): void {
   }
 
   const now = Date.now();
-  ctx.lineWidth = 2;
-  const drawPath = (
+  type Mover = {
+    sx: number;
+    sy: number;
+    angle: number;
+    mine: boolean;
+    kind: "march" | "transport";
+  };
+  const movers: Mover[] = [];
+
+  const pointOnPath = (
+    t: number,
+    fromX: number,
+    fromY: number,
+    toX: number,
+    toY: number,
+    roundTrip: boolean
+  ) => {
+    const clamped = Math.min(1, Math.max(0, t));
+    if (!roundTrip) {
+      return {
+        x: fromX + (toX - fromX) * clamped,
+        y: fromY + (toY - fromY) * clamped
+      };
+    }
+    if (clamped < 0.5) {
+      const u = clamped * 2;
+      return { x: fromX + (toX - fromX) * u, y: fromY + (toY - fromY) * u };
+    }
+    const u = (clamped - 0.5) * 2;
+    return { x: toX + (fromX - toX) * u, y: toY + (fromY - toY) * u };
+  };
+
+  const placeMover = (
     fromX: number,
     fromY: number,
     toX: number,
@@ -106,48 +140,48 @@ function draw(): void {
     arriveAt: string,
     mine: boolean,
     roundTrip: boolean,
-    stroke: string,
-    fill: string
+    kind: "march" | "transport",
+    stroke: string
   ) => {
-    let t = Math.min(
+    const t = Math.min(
       1,
       Math.max(0, (now - Date.parse(departAt)) / Math.max(1, Date.parse(arriveAt) - Date.parse(departAt)))
     );
-    let ax: number;
-    let ay: number;
-    if (roundTrip) {
-      if (t < 0.5) {
-        const u = t * 2;
-        ax = fromX + (toX - fromX) * u;
-        ay = fromY + (toY - fromY) * u;
-      } else {
-        const u = (t - 0.5) * 2;
-        ax = toX + (fromX - toX) * u;
-        ay = toY + (fromY - toY) * u;
-      }
-    } else {
-      ax = fromX + (toX - fromX) * t;
-      ay = fromY + (toY - fromY) * t;
-    }
+    const here = pointOnPath(t, fromX, fromY, toX, toY, roundTrip);
+    const lookT = t >= 0.98 ? Math.max(0, t - 0.02) : t + 0.02;
+    const look = pointOnPath(lookT, fromX, fromY, toX, toY, roundTrip);
     const from = toScreen(fromX, fromY);
     const to = toScreen(toX, toY);
-    const cur = toScreen(ax, ay);
+    const cur = toScreen(here.x, here.y);
+    const lookS = toScreen(look.x, look.y);
+    const angle =
+      t >= 0.98
+        ? Math.atan2(cur.sy - lookS.sy, cur.sx - lookS.sx)
+        : Math.atan2(lookS.sy - cur.sy, lookS.sx - cur.sx);
+    ctx.save();
     ctx.strokeStyle = mine ? stroke : "#6a7a8a";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([7, 6]);
+    ctx.lineDashOffset = -((now / 35) % 26);
     ctx.beginPath();
     ctx.moveTo(from.sx, from.sy);
     ctx.lineTo(to.sx, to.sy);
     ctx.stroke();
-    ctx.fillStyle = mine ? fill : "#8aa0b4";
-    ctx.beginPath();
-    ctx.arc(cur.sx, cur.sy, 4, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.restore();
+    movers.push({
+      sx: cur.sx,
+      sy: cur.sy,
+      angle,
+      mine,
+      kind
+    });
   };
 
   for (const item of props.world.marches) {
-    drawPath(item.fromX, item.fromY, item.toX, item.toY, item.departAt, item.arriveAt, item.mine, false, "#d4b46a", "#e8c97a");
+    placeMover(item.fromX, item.fromY, item.toX, item.toY, item.departAt, item.arriveAt, item.mine, false, "march", "#d4b46a");
   }
   for (const item of props.world.transports ?? []) {
-    drawPath(
+    placeMover(
       item.fromX,
       item.fromY,
       item.toX,
@@ -156,8 +190,8 @@ function draw(): void {
       item.arriveAt,
       item.mine,
       item.kind === "market",
-      "#6bc4a8",
-      "#8ee0c4"
+      "transport",
+      "#6bc4a8"
     );
   }
 
@@ -191,6 +225,40 @@ function draw(): void {
       ctx.arc(p.sx, p.sy, size / 2 + 6, 0, Math.PI * 2);
       ctx.stroke();
     }
+  }
+
+  const unitSize = Math.max(20, Math.min(36, cell * 2.6));
+  const walkFrame = Math.floor(now / 180) % 2;
+  const bob = Math.sin(now / 130) * 2.4;
+  for (const mover of movers) {
+    const img =
+      mover.kind === "transport" ? sprites.cart : walkFrame === 0 ? sprites.march : sprites.march2;
+    ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+    ctx.beginPath();
+    ctx.ellipse(mover.sx, mover.sy + unitSize * 0.38, unitSize * 0.28, unitSize * 0.12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.save();
+    ctx.translate(mover.sx, mover.sy + bob);
+    if (Math.cos(mover.angle) < 0) {
+      ctx.scale(-1, 1);
+    }
+    ctx.globalAlpha = mover.mine ? 1 : 0.82;
+    drawSprite(ctx, img, 0, 0, unitSize);
+    ctx.restore();
+    ctx.save();
+    ctx.translate(
+      mover.sx + Math.cos(mover.angle) * (unitSize * 0.58),
+      mover.sy + bob + Math.sin(mover.angle) * (unitSize * 0.58)
+    );
+    ctx.rotate(mover.angle);
+    ctx.fillStyle = mover.mine ? (mover.kind === "transport" ? "#8ee0c4" : "#e8c97a") : "#8aa0b4";
+    ctx.beginPath();
+    ctx.moveTo(7, 0);
+    ctx.lineTo(-4, 5);
+    ctx.lineTo(-4, -5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
   }
 }
 

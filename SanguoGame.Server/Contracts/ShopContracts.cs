@@ -49,7 +49,8 @@ public sealed record ShopOverviewDto(
     int Y,
     DateTime? ProtectionUntil,
     IReadOnlyList<ShopCatalogItemDto> Catalog,
-    IReadOnlyList<ShopBuffDto> Buffs);
+    IReadOnlyList<ShopBuffDto> Buffs,
+    CityQueueSlotsDto? Slots = null);
 
 public sealed record RecruitQueueDto(
     string TroopType,

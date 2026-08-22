@@ -32,7 +32,12 @@ const plots = computed(() =>
     item,
     pos: layout[item.type] ?? { x: 50, y: 52, w: 14, z: 3 },
     count: props.army.troops[item.type as keyof typeof props.army.troops] ?? 0,
-    recruiting: props.army.recruitQueue?.troopType === item.type,
+    recruiting: (props.army.recruitQueues ?? (props.army.recruitQueue ? [props.army.recruitQueue] : [])).some(
+      (queue) => queue.troopType === item.type
+    ),
+    queued: (props.army.recruitQueues ?? (props.army.recruitQueue ? [props.army.recruitQueue] : []))
+      .filter((queue) => queue.troopType === item.type)
+      .reduce((sum, queue) => sum + queue.count, 0),
     locked: props.army.barracksLevel < item.requireBarracksLevel
   }))
 );
@@ -90,6 +95,7 @@ function broken(ev: Event): void {
         <span>驻军 {{ army.troops.infantry + army.troops.archer + army.troops.cavalry }}/{{ army.troopCap }}</span>
         <span>城防 {{ army.wallDefense }}</span>
         <span v-if="army.troopPowerBonusPercent">战力+{{ army.troopPowerBonusPercent }}%</span>
+        <span v-if="army.recruitSlots">征兵 {{ army.recruitSlots.used }}/{{ army.recruitSlots.limit }}</span>
       </div>
       <button
         v-for="plot in plots"
@@ -115,8 +121,8 @@ function broken(ev: Event): void {
         <span class="dust" v-if="plot.recruiting"></span>
         <b class="name">{{ plot.item.name }}</b>
         <em class="lv">{{ plot.count }}</em>
-        <span v-if="plot.recruiting && army.recruitQueue" class="ripe-tag">
-          训练 {{ army.recruitQueue.count }}
+        <span v-if="plot.recruiting" class="ripe-tag">
+          训练 {{ plot.queued }}
         </span>
       </button>
     </div>
@@ -130,11 +136,17 @@ function broken(ev: Event): void {
         <strong>{{ selected.item.name }}</strong>
         <span class="hint">兵营 ≥ {{ selected.item.requireBarracksLevel }} 级 · 现有 {{ selected.count }}</span>
         <span v-if="selected.locked" class="hint">兵营等级不足，无法征召。</span>
-        <span v-else-if="army.recruitQueue" class="hint pulse">
-          征兵中 {{ troopLabel[army.recruitQueue.troopType] ?? army.recruitQueue.troopType }}
-          × {{ army.recruitQueue.count }}，剩余 {{ remainText(army.recruitQueue.finishAt, nowMs) }}
+        <span
+          v-else-if="(army.recruitQueues ?? (army.recruitQueue ? [army.recruitQueue] : [])).length"
+          class="hint pulse"
+        >
+          征兵队列
+          {{ army.recruitSlots ? `${army.recruitSlots.used}/${army.recruitSlots.limit}` : "" }}：
+          <template v-for="(queue, index) in army.recruitQueues ?? (army.recruitQueue ? [army.recruitQueue] : [])" :key="index">
+            {{ troopLabel[queue.troopType] ?? queue.troopType }} × {{ queue.count }} {{ remainText(queue.finishAt, nowMs) }}
+          </template>
         </span>
-        <span v-else class="hint">下达后扣资源，到点入帐。步兵 1 级、弓兵 2 级、骑兵 3 级。</span>
+        <span v-else class="hint">下达后扣资源，到点入帐。默认 5 条征兵队列，可在商城再加 1 条。</span>
         <div class="cost-row">
           <span v-for="key in resourceKeys" :key="key" class="cost-chip">
             <img :src="resourceArt[key]" :alt="resourceLabel[key]" />
@@ -151,7 +163,11 @@ function broken(ev: Event): void {
           max="100"
           @input="emit('update:count', Number(($event.target as HTMLInputElement).value))"
         />
-        <button type="button" :disabled="busy || Boolean(army.recruitQueue) || selected.locked" @click="emit('recruit')">
+        <button
+          type="button"
+          :disabled="busy || selected.locked || (army.recruitSlots ? army.recruitSlots.used >= army.recruitSlots.limit : Boolean(army.recruitQueue))"
+          @click="emit('recruit')"
+        >
           征兵
         </button>
       </div>

@@ -1,9 +1,12 @@
+using SanguoGame.Core.Buildings;
+
 namespace SanguoGame.Core.Shop;
 
 public enum ItemKind
 {
     Buff = 0,
-    Consumable = 1
+    Consumable = 1,
+    Unlock = 2
 }
 
 public sealed record ItemDef(
@@ -28,6 +31,10 @@ public static class ItemCatalog
     public const string ResourceBoost = "resourceBoost";
     public const string RelocateRandom = "relocateRandom";
     public const string RelocateTarget = "relocateTarget";
+    public const string QueueBuild = "queueBuild";
+    public const string QueueField = "queueField";
+    public const string QueueTech = "queueTech";
+    public const string QueueRecruit = "queueRecruit";
 
     public const int SpeedPercent = 50;
     public const int DurationHours = 5;
@@ -92,7 +99,39 @@ public static class ItemCatalog
             400,
             0,
             0,
-            "迁到指定空地坐标，并进入保护。")
+            "迁到指定空地坐标，并进入保护。"),
+        new(
+            QueueBuild,
+            "建造队列令",
+            ItemKind.Unlock,
+            200,
+            0,
+            0,
+            "使用后永久额外增加 1 条建造队列（主殿、民居、仓库、兵营、城墙）。每城限用 1 张。"),
+        new(
+            QueueField,
+            "资源队列令",
+            ItemKind.Unlock,
+            200,
+            0,
+            0,
+            "使用后永久额外增加 1 条资源田建造队列。每城限用 1 张。"),
+        new(
+            QueueTech,
+            "科技队列令",
+            ItemKind.Unlock,
+            200,
+            0,
+            0,
+            "使用后永久额外增加 1 条科技建筑建造队列。每城限用 1 张。"),
+        new(
+            QueueRecruit,
+            "征兵队列令",
+            ItemKind.Unlock,
+            200,
+            0,
+            0,
+            "使用后永久额外增加 1 条征兵队列。每城限用 1 张。")
     ];
 
     public static ItemDef? Find(string itemType) =>
@@ -104,6 +143,17 @@ public static class ItemCatalog
     public static bool IsRelocate(string itemType) =>
         itemType.Equals(RelocateRandom, StringComparison.OrdinalIgnoreCase)
         || itemType.Equals(RelocateTarget, StringComparison.OrdinalIgnoreCase);
+
+    public static QueueKind? QueueKindOf(string itemType) => itemType switch
+    {
+        _ when itemType.Equals(QueueBuild, StringComparison.OrdinalIgnoreCase) => QueueKind.Build,
+        _ when itemType.Equals(QueueField, StringComparison.OrdinalIgnoreCase) => QueueKind.Field,
+        _ when itemType.Equals(QueueTech, StringComparison.OrdinalIgnoreCase) => QueueKind.Tech,
+        _ when itemType.Equals(QueueRecruit, StringComparison.OrdinalIgnoreCase) => QueueKind.Recruit,
+        _ => null
+    };
+
+    public static bool IsQueueUnlock(string itemType) => QueueKindOf(itemType) is not null;
 
     public static string? SpeedKindOf(string buildingType) => buildingType switch
     {

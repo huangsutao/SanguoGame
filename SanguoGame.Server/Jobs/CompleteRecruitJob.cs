@@ -13,6 +13,10 @@ public sealed class CompleteRecruitJob
     }
 
     [AutomaticRetry(Attempts = 5)]
+    public Task Execute(long cityId, long recruitId) =>
+        _army.CompleteRecruitAsync(cityId, recruitId, CancellationToken.None);
+
+    [AutomaticRetry(Attempts = 5)]
     public Task Execute(long cityId, string troopType, int count) =>
         _army.CompleteRecruitAsync(cityId, troopType, count, CancellationToken.None);
 }

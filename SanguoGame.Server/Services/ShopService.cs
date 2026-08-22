@@ -76,6 +76,16 @@ public sealed class ShopService
             throw new BizException(ErrorCodes.ValidationFailed, "使用数量为 1～99");
         }
 
+        if (def.Kind == ItemKind.Unlock)
+        {
+            if (request.Count != 1)
+            {
+                throw new BizException(ErrorCodes.ValidationFailed, "队列令一次只能使用 1 张");
+            }
+
+            return await ExpandQueueAsync(accountId, def, cancellationToken);
+        }
+
         if (def.Kind == ItemKind.Consumable)
         {
             if (request.Count != 1)
@@ -97,25 +107,15 @@ public sealed class ShopService
             var expire = ItemCatalog.StackExpireAt(now, current?.ExpireAt, def.DurationHours, request.Count);
             await UpsertBuffAsync(transaction, locked.Id, def.Type, expire, ct);
 
-            BuildingEntity? building = null;
-            DateTime? recruitFinish = null;
+            BuildingEntity[] buildings = [];
+            RecruitEntity[] recruits = [];
             if (def.Type is ItemCatalog.SpeedBuild or ItemCatalog.SpeedUpgrade or ItemCatalog.SpeedTech)
             {
-                building = await ShortenBuildingAsync(transaction, locked.Id, def.Type, now, oldPercent, def.SpeedPercent, ct);
+                buildings = await ShortenBuildingsAsync(transaction, locked.Id, def.Type, now, oldPercent, def.SpeedPercent, ct);
             }
-            else if (def.Type == ItemCatalog.SpeedRecruit && locked.RecruitFinishAt is { } finish)
+            else if (def.Type == ItemCatalog.SpeedRecruit)
             {
-                var shortened = ItemCatalog.ShortenRemaining(finish, now, oldPercent, def.SpeedPercent);
-                if (shortened != finish)
-                {
-                    locked.RecruitFinishAt = shortened;
-                    await _orm.Update<CityEntity>()
-                        .WithTransaction(transaction)
-                        .SetSource(locked)
-                        .UpdateColumns(c => c.RecruitFinishAt)
-                        .ExecuteAffrowsAsync(ct);
-                    recruitFinish = shortened;
-                }
+                recruits = await ShortenRecruitsAsync(transaction, locked.Id, now, oldPercent, def.SpeedPercent, ct);
             }
             else if (def.Type == ItemCatalog.ResourceBoost && oldPercent <= 0)
             {
@@ -126,26 +126,71 @@ public sealed class ShopService
             city.X = locked.X;
             city.Y = locked.Y;
             city.ProtectionUntil = locked.ProtectionUntil;
-            return (
-                Building: building,
-                RecruitFinish: recruitFinish,
-                RecruitType: locked.RecruitType,
-                RecruitCount: locked.RecruitCount);
+            city.ExtraBuildSlots = locked.ExtraBuildSlots;
+            city.ExtraFieldSlots = locked.ExtraFieldSlots;
+            city.ExtraTechSlots = locked.ExtraTechSlots;
+            city.ExtraRecruitSlots = locked.ExtraRecruitSlots;
+            return (Buildings: buildings, Recruits: recruits);
         }, cancellationToken);
 
-        if (planned.Building is { TargetLevel: int target, FinishAt: { } finishAt })
+        foreach (var building in planned.Buildings)
         {
-            _jobs.Schedule<CompleteInnerBuildingJob>(
-                job => job.Execute(city.Id, planned.Building.Type, target),
-                UtcSchedule.At(finishAt));
+            if (building.TargetLevel is int target && building.FinishAt is { } finishAt)
+            {
+                var buildingType = building.Type;
+                _jobs.Schedule<CompleteInnerBuildingJob>(
+                    job => job.Execute(city.Id, buildingType, target),
+                    UtcSchedule.At(finishAt));
+            }
         }
 
-        if (planned.RecruitFinish is { } recruitAt && !string.IsNullOrWhiteSpace(planned.RecruitType))
+        foreach (var recruit in planned.Recruits)
         {
+            var recruitId = recruit.Id;
             _jobs.Schedule<CompleteRecruitJob>(
-                job => job.Execute(city.Id, planned.RecruitType, planned.RecruitCount),
-                UtcSchedule.At(recruitAt));
+                job => job.Execute(city.Id, recruitId),
+                UtcSchedule.At(recruit.FinishAt));
         }
+
+        return await BuildOverviewAsync(city, cancellationToken);
+    }
+
+    private async Task<ShopOverviewDto> ExpandQueueAsync(
+        long accountId,
+        ItemDef def,
+        CancellationToken cancellationToken)
+    {
+        var kind = ItemCatalog.QueueKindOf(def.Type)
+            ?? throw new BizException(ErrorCodes.ValidationFailed, "未知道具");
+        var city = await RequireCityAsync(accountId, cancellationToken);
+        await CityRowLock.RunAsync(_orm, city.Id, async (transaction, locked, ct) =>
+        {
+            var extra = QueueSlots.Extra(locked, kind);
+            if (extra >= QueueRules.MaxExtra)
+            {
+                throw new BizException(ErrorCodes.QueueSlotMaxed, "该队列已额外扩充");
+            }
+
+            await ConsumeItemAsync(transaction, locked.Id, def.Type, 1, ct);
+            QueueSlots.SetExtra(locked, kind, extra + 1);
+            await _orm.Update<CityEntity>()
+                .WithTransaction(transaction)
+                .SetSource(locked)
+                .UpdateColumns(c => new
+                {
+                    c.ExtraBuildSlots,
+                    c.ExtraFieldSlots,
+                    c.ExtraTechSlots,
+                    c.ExtraRecruitSlots
+                })
+                .ExecuteAffrowsAsync(ct);
+            city.ExtraBuildSlots = locked.ExtraBuildSlots;
+            city.ExtraFieldSlots = locked.ExtraFieldSlots;
+            city.ExtraTechSlots = locked.ExtraTechSlots;
+            city.ExtraRecruitSlots = locked.ExtraRecruitSlots;
+            city.Yuanbao = locked.Yuanbao;
+            return 0;
+        }, cancellationToken);
 
         return await BuildOverviewAsync(city, cancellationToken);
     }
@@ -275,7 +320,7 @@ public sealed class ShopService
         }
     }
 
-    private async Task<BuildingEntity?> ShortenBuildingAsync(
+    private async Task<BuildingEntity[]> ShortenBuildingsAsync(
         DbTransaction transaction,
         long cityId,
         string speedKind,
@@ -284,29 +329,68 @@ public sealed class ShopService
         int newPercent,
         CancellationToken cancellationToken)
     {
-        var row = await _orm.Select<BuildingEntity>()
+        var rows = await _orm.Select<BuildingEntity>()
             .WithTransaction(transaction)
             .Where(b => b.CityId == cityId && b.Status == BuildingStatus.Upgrading)
-            .FirstAsync(cancellationToken);
-        if (row is null || row.FinishAt is null || ItemCatalog.SpeedKindOf(row.Type) != speedKind)
+            .ToListAsync(cancellationToken);
+        var changed = new List<BuildingEntity>();
+        foreach (var row in rows)
         {
-            return null;
+            if (row.FinishAt is null || ItemCatalog.SpeedKindOf(row.Type) != speedKind)
+            {
+                continue;
+            }
+
+            var shortened = ItemCatalog.ShortenRemaining(row.FinishAt.Value, now, oldPercent, newPercent);
+            if (shortened == row.FinishAt)
+            {
+                continue;
+            }
+
+            row.FinishAt = shortened;
+            row.UpdatedAt = now;
+            await _orm.Update<BuildingEntity>()
+                .WithTransaction(transaction)
+                .SetSource(row)
+                .UpdateColumns(b => new { b.FinishAt, b.UpdatedAt })
+                .ExecuteAffrowsAsync(cancellationToken);
+            changed.Add(row);
         }
 
-        var shortened = ItemCatalog.ShortenRemaining(row.FinishAt.Value, now, oldPercent, newPercent);
-        if (shortened == row.FinishAt)
-        {
-            return null;
-        }
+        return [.. changed];
+    }
 
-        row.FinishAt = shortened;
-        row.UpdatedAt = now;
-        await _orm.Update<BuildingEntity>()
+    private async Task<RecruitEntity[]> ShortenRecruitsAsync(
+        DbTransaction transaction,
+        long cityId,
+        DateTime now,
+        int oldPercent,
+        int newPercent,
+        CancellationToken cancellationToken)
+    {
+        var rows = await _orm.Select<RecruitEntity>()
             .WithTransaction(transaction)
-            .SetSource(row)
-            .UpdateColumns(b => new { b.FinishAt, b.UpdatedAt })
-            .ExecuteAffrowsAsync(cancellationToken);
-        return row;
+            .Where(r => r.CityId == cityId)
+            .ToListAsync(cancellationToken);
+        var changed = new List<RecruitEntity>();
+        foreach (var row in rows)
+        {
+            var shortened = ItemCatalog.ShortenRemaining(row.FinishAt, now, oldPercent, newPercent);
+            if (shortened == row.FinishAt)
+            {
+                continue;
+            }
+
+            row.FinishAt = shortened;
+            await _orm.Update<RecruitEntity>()
+                .WithTransaction(transaction)
+                .SetSource(row)
+                .UpdateColumns(r => r.FinishAt)
+                .ExecuteAffrowsAsync(cancellationToken);
+            changed.Add(row);
+        }
+
+        return [.. changed];
     }
 
     private async Task RecalibrateFieldsAsync(
@@ -447,6 +531,12 @@ public sealed class ShopService
             .ToListAsync(cancellationToken);
         var owned = items.ToDictionary(i => i.ItemType, i => i.Count, StringComparer.OrdinalIgnoreCase);
         var buffs = await CityBuffStore.LoadAsync(_orm, city.Id, cancellationToken);
+        var buildings = await _orm.Select<BuildingEntity>()
+            .Where(b => b.CityId == city.Id)
+            .ToListAsync(cancellationToken);
+        var recruitUsed = await _orm.Select<RecruitEntity>()
+            .Where(r => r.CityId == city.Id)
+            .CountAsync(cancellationToken);
         var catalog = ItemCatalog.All.Select(def =>
             new ShopCatalogItemDto(
                 def.Type,
@@ -473,6 +563,12 @@ public sealed class ShopService
             .Select(dto => dto!)
             .ToList();
 
+        var slots = new CityQueueSlotsDto(
+            QueueSlots.State(city, QueueKind.Build, QueueSlots.Used(buildings, QueueKind.Build)),
+            QueueSlots.State(city, QueueKind.Field, QueueSlots.Used(buildings, QueueKind.Field)),
+            QueueSlots.State(city, QueueKind.Tech, QueueSlots.Used(buildings, QueueKind.Tech)),
+            QueueSlots.State(city, QueueKind.Recruit, (int)recruitUsed));
+
         return new ShopOverviewDto(
             city.Id,
             now,
@@ -481,7 +577,8 @@ public sealed class ShopService
             city.Y,
             city.ProtectionUntil,
             catalog,
-            active);
+            active,
+            slots);
     }
 
     private async Task<CityEntity> RequireCityAsync(long accountId, CancellationToken cancellationToken)

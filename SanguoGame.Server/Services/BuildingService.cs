@@ -56,13 +56,18 @@ public sealed class BuildingService
                 .Where(b => b.CityId == lockedCity.Id)
                 .ToListAsync(ct);
             var byType = rows.ToDictionary(b => b.Type, StringComparer.OrdinalIgnoreCase);
-
-            if (rows.Any(b => b.Status == BuildingStatus.Upgrading))
-            {
-                throw new BizException(ErrorCodes.BuildingQueueBusy, "本城正在建造或升级");
-            }
+            var kind = QueueRules.OfBuilding(def.Type);
 
             byType.TryGetValue(def.Type, out var entity);
+            if (entity is { Status: BuildingStatus.Upgrading })
+            {
+                throw new BizException(ErrorCodes.BuildingQueueBusy, "该建筑正在升级");
+            }
+
+            if (QueueSlots.IsFull(lockedCity, rows, kind))
+            {
+                throw new BizException(ErrorCodes.BuildingQueueBusy, "该队列已满");
+            }
             var level = entity?.Level ?? 0;
             if (level >= def.MaxLevel)
             {
@@ -144,7 +149,7 @@ public sealed class BuildingService
             }
             catch (Exception ex) when (DbErrors.IsUniqueViolation(ex))
             {
-                throw new BizException(ErrorCodes.BuildingQueueBusy, "本城正在建造或升级");
+                throw new BizException(ErrorCodes.BuildingQueueBusy, "该队列已满");
             }
 
             return (def.Type, targetLevel, plannedFinish);
@@ -363,17 +368,12 @@ public sealed class BuildingService
         var academyLevel = byType.TryGetValue("academy", out var academy) ? academy.Level : 0;
         var houseLevel = byType.TryGetValue("house", out var house) ? house.Level : 0;
         var warehouseLevel = byType.TryGetValue("warehouse", out var warehouse) ? warehouse.Level : 0;
-        var queueRow = rows.FirstOrDefault(b => b.Status == BuildingStatus.Upgrading);
+        var innerQueues = QueueSlots.Inner(rows);
+        var buildUsed = QueueSlots.Used(rows, QueueKind.Build);
+        var techUsed = QueueSlots.Used(rows, QueueKind.Tech);
         var stock = ToAmount(city);
-        var queueBusy = queueRow is not null;
         var now = DateTime.UtcNow;
         var buffs = await CityBuffStore.LoadAsync(_orm, city.Id, cancellationToken);
-
-        BuildingQueueDto? queue = null;
-        if (queueRow is { TargetLevel: int qLevel, FinishAt: { } qFinish })
-        {
-            queue = new BuildingQueueDto(queueRow.Type, qLevel, qFinish);
-        }
 
         var items = InnerBuildingCatalog.All.Select(def =>
         {
@@ -383,6 +383,10 @@ public sealed class BuildingService
             var nextLevel = level + 1;
             BuildingCostDto? next = null;
             string? blocked = null;
+            var kind = QueueRules.OfBuilding(def.Type);
+            var queueBusy = kind == QueueKind.Tech
+                ? techUsed >= QueueSlots.Limit(city, QueueKind.Tech)
+                : buildUsed >= QueueSlots.Limit(city, QueueKind.Build);
 
             if (level >= def.MaxLevel)
             {
@@ -435,8 +439,11 @@ public sealed class BuildingService
             new ResourceDto(city.Grain, city.Wood, city.Iron, city.Copper),
             InnerBuildingCatalog.ResourceCap(warehouseLevel),
             InnerBuildingCatalog.PopulationCap(houseLevel),
-            queue,
-            items);
+            innerQueues.FirstOrDefault(),
+            items,
+            innerQueues,
+            QueueSlots.State(city, QueueKind.Build, buildUsed),
+            QueueSlots.State(city, QueueKind.Tech, techUsed));
     }
 
     private static ResourceAmount ToAmount(CityEntity city) =>

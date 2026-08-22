@@ -1,4 +1,4 @@
-import type { BuildingCostDto, FieldItemDto } from "./api/types";
+import type { BuildingCostDto, FieldItemDto, QueueStateDto } from "./api/types";
 import { resourceKeys } from "./art";
 
 export const resourceLabel: Record<string, string> = {
@@ -40,6 +40,14 @@ export function calibratedNow(serverTime: string | undefined, capturedAt: number
     return nowMs;
   }
   return parsed + (nowMs - capturedAt);
+}
+
+export function slotLine(slots?: QueueStateDto, label = "队列"): string {
+  if (!slots) {
+    return "";
+  }
+  const extra = slots.extra > 0 ? `（含扩充 ${slots.extra}）` : "";
+  return `${label} ${slots.used}/${slots.limit}${extra}`;
 }
 
 export function blockedText(reason?: string): string {

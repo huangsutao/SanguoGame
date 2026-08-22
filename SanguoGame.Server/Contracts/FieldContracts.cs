@@ -36,7 +36,9 @@ public sealed record FieldsOverviewDto(
     ResourceDto Resources,
     int ResourceCap,
     BuildingQueueDto? Queue,
-    IReadOnlyList<FieldItemDto> Fields);
+    IReadOnlyList<FieldItemDto> Fields,
+    IReadOnlyList<BuildingQueueDto>? Queues = null,
+    QueueStateDto? FieldSlots = null);
 
 public sealed record FieldsCollectDto(
     long CityId,

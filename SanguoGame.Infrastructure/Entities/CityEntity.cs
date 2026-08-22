@@ -58,6 +58,18 @@ public sealed class CityEntity
     [Column(Name = "recruit_finish_at")]
     public DateTime? RecruitFinishAt { get; set; }
 
+    [Column(Name = "extra_build_slots", IsNullable = false)]
+    public int ExtraBuildSlots { get; set; }
+
+    [Column(Name = "extra_field_slots", IsNullable = false)]
+    public int ExtraFieldSlots { get; set; }
+
+    [Column(Name = "extra_tech_slots", IsNullable = false)]
+    public int ExtraTechSlots { get; set; }
+
+    [Column(Name = "extra_recruit_slots", IsNullable = false)]
+    public int ExtraRecruitSlots { get; set; }
+
     [Column(Name = "created_at", IsNullable = false)]
     public DateTime CreatedAt { get; set; }
 }

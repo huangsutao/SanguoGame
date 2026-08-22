@@ -26,8 +26,12 @@ const layout: Record<string, { x: number; y: number; w: number; z: number }> = {
   speedTech: { x: 50, y: 28, w: 13, z: 2 },
   speedRecruit: { x: 67, y: 36, w: 12, z: 3 },
   resourceBoost: { x: 84, y: 44, w: 12, z: 3 },
-  relocateRandom: { x: 32, y: 70, w: 13, z: 5 },
-  relocateTarget: { x: 68, y: 70, w: 13, z: 5 }
+  queueBuild: { x: 16, y: 58, w: 11, z: 4 },
+  queueField: { x: 39, y: 58, w: 11, z: 4 },
+  queueTech: { x: 61, y: 58, w: 11, z: 4 },
+  queueRecruit: { x: 84, y: 58, w: 11, z: 4 },
+  relocateRandom: { x: 32, y: 78, w: 13, z: 5 },
+  relocateTarget: { x: 68, y: 78, w: 13, z: 5 }
 };
 
 const selectedType = ref<string | null>(null);
@@ -45,6 +49,35 @@ const plots = computed(() =>
 const selected = computed(() => plots.value.find((plot) => plot.item.type === selectedType.value) ?? null);
 
 const count = computed(() => Math.max(1, Math.min(99, Math.floor(Number(buyCount.value) || 1))));
+
+function kindLabel(kind: string): string {
+  if (kind === "buff") {
+    return "时效令";
+  }
+  if (kind === "unlock") {
+    return "永久令";
+  }
+  return "消耗品";
+}
+
+function extraAlready(type: string): boolean {
+  const slots = props.shop.slots;
+  if (!slots) {
+    return false;
+  }
+  switch (type) {
+    case "queueBuild":
+      return slots.build.extra >= 1;
+    case "queueField":
+      return slots.field.extra >= 1;
+    case "queueTech":
+      return slots.tech.extra >= 1;
+    case "queueRecruit":
+      return slots.recruit.extra >= 1;
+    default:
+      return false;
+  }
+}
 
 function pick(type: string): void {
   selectedType.value = type;
@@ -83,6 +116,10 @@ function broken(ev: Event): void {
       </div>
       <div class="map-hud">
         <span>元宝 {{ shop.yuanbao }}</span>
+        <span v-if="shop.slots">建造 {{ shop.slots.build.used }}/{{ shop.slots.build.limit }}</span>
+        <span v-if="shop.slots">资源 {{ shop.slots.field.used }}/{{ shop.slots.field.limit }}</span>
+        <span v-if="shop.slots">科技 {{ shop.slots.tech.used }}/{{ shop.slots.tech.limit }}</span>
+        <span v-if="shop.slots">征兵 {{ shop.slots.recruit.used }}/{{ shop.slots.recruit.limit }}</span>
         <span v-for="buff in shop.buffs" :key="buff.type">
           {{ buff.name }} {{ remainText(buff.expireAt, nowMs) }}
         </span>
@@ -120,11 +157,12 @@ function broken(ev: Event): void {
       </div>
       <div class="info">
         <strong>{{ selected.item.name }}</strong>
-        <span class="hint">{{ selected.item.price }} 元宝 · {{ selected.item.kind === "buff" ? "时效令" : "消耗品" }}</span>
+        <span class="hint">{{ selected.item.price }} 元宝 · {{ kindLabel(selected.item.kind) }}</span>
         <span class="hint">{{ selected.item.description }}</span>
         <span v-if="selected.buff" class="hint pulse">
           生效中 {{ remainText(selected.buff.expireAt, nowMs) }}（+{{ selected.buff.speedPercent }}%）
         </span>
+        <span v-else-if="extraAlready(selected.item.type)" class="hint">该队列已扩充，无需再用。</span>
         <div v-if="selected.item.type === 'relocateTarget'" class="form inline shop-coords">
           <label>目标 X <input :value="relocateX" type="number" min="0" @input="emit('update:relocateX', Number(($event.target as HTMLInputElement).value) || 0)" /></label>
           <label>目标 Y <input :value="relocateY" type="number" min="0" @input="emit('update:relocateY', Number(($event.target as HTMLInputElement).value) || 0)" /></label>
@@ -139,11 +177,11 @@ function broken(ev: Event): void {
         >
           购买
         </button>
-        <button type="button" :disabled="busy || selected.item.owned < 1" @click="emit('use', selected.item, count)">
+        <button type="button" :disabled="busy || selected.item.owned < 1 || extraAlready(selected.item.type)" @click="emit('use', selected.item, count)">
           使用
         </button>
       </div>
     </aside>
-    <p v-else class="hint scene-tip">点选铺面查看令牌。加速与丰收持续 5 小时，元宝由出征掠夺获得。</p>
+    <p v-else class="hint scene-tip">点选铺面查看令牌。加速与丰收持续 5 小时；队列令可永久多开 1 条。元宝由出征掠夺获得。</p>
   </div>
 </template>

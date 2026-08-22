@@ -372,6 +372,21 @@ public class ShopRulesTests
     }
 
     [Fact]
+    public void QueueRules_DefaultFivePlusOneExtra()
+    {
+        Assert.Equal(5, QueueRules.BaseSlots);
+        Assert.Equal(5, QueueRules.Limit(0));
+        Assert.Equal(6, QueueRules.Limit(1));
+        Assert.Equal(6, QueueRules.Limit(9));
+        Assert.Equal(QueueKind.Build, QueueRules.OfBuilding("palace"));
+        Assert.Equal(QueueKind.Build, QueueRules.OfBuilding("barracks"));
+        Assert.Equal(QueueKind.Build, QueueRules.OfBuilding("arrowTower"));
+        Assert.Equal(QueueKind.Field, QueueRules.OfBuilding("farm"));
+        Assert.Equal(QueueKind.Tech, QueueRules.OfBuilding("academy"));
+        Assert.Equal(QueueKind.Tech, QueueRules.OfBuilding("drillHall"));
+    }
+
+    [Fact]
     public void SpeedKind_MapsBuildings()
     {
         Assert.Equal(ItemCatalog.SpeedBuild, ItemCatalog.SpeedKindOf("palace"));

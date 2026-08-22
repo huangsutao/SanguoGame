@@ -65,7 +65,6 @@ import type {
   AllianceDetailDto,
   AlliancePendingDto,
   AllianceSummaryDto,
-  BuildingCostDto,
   MarketsOverviewDto,
   MarchDto,
   TroopDto,
@@ -76,7 +75,11 @@ import type {
 import { clearTokens, getAccessToken, getRefreshToken, saveTokens, setUnauthorizedHandler } from "./session";
 import type { HubConnection } from "@microsoft/signalr";
 import WorldMap from "./WorldMap.vue";
-import { buildingPortrait, resourceArt, resourceKeys, troopPortrait } from "./art";
+import CityScene from "./CityScene.vue";
+import OuterScene from "./OuterScene.vue";
+import { resourceArt, resourceKeys, troopPortrait } from "./art";
+import { gameAudio } from "./audio";
+import { remainText as formatRemain, resourceLabel, troopLabel } from "./format";
 
 const loading = ref(true);
 const busy = ref(false);
@@ -86,6 +89,10 @@ const mode = ref<"login" | "register">("login");
 const tab = ref<"city" | "army" | "daily" | "map" | "reports" | "mail" | "ranks" | "alliance" | "market" | "shop">(
   "city"
 );
+const cityZone = ref<"inner" | "outer" | "wall">("inner");
+const muted = ref(gameAudio.muted);
+const flyChips = ref<{ id: number; key: string; amount: number }[]>([]);
+let flySeq = 0;
 const session = ref<SessionResponse | null>(null);
 const overview = ref<BuildingsOverviewDto | null>(null);
 const fields = ref<FieldsOverviewDto | null>(null);
@@ -154,22 +161,6 @@ const hudCap = computed(
     markets.value?.resourceCap ??
     0
 );
-
-function costParts(next?: BuildingCostDto): { key: (typeof resourceKeys)[number]; amount: number }[] {
-  if (!next) {
-    return [];
-  }
-  return resourceKeys
-    .map((key) => ({ key, amount: next.cost[key] }))
-    .filter((item) => item.amount > 0);
-}
-
-function levelWidth(level: number, maxLevel: number): string {
-  if (maxLevel <= 0) {
-    return "0%";
-  }
-  return `${Math.max(0, Math.min(100, (level / maxLevel) * 100))}%`;
-}
 
 const selectedTroop = computed(() =>
   army.value?.troopTypes?.find((item) => item.type === recruitType.value)
@@ -283,18 +274,15 @@ function rewardParts(reward: { grain: number; wood: number; iron: number; copper
     .filter((item) => item.amount > 0);
 }
 
-const resourceLabel: Record<string, string> = {
-  grain: "粮",
-  wood: "木",
-  iron: "铁",
-  copper: "铜"
-};
-
-const troopLabel: Record<string, string> = {
-  infantry: "步兵",
-  archer: "弓兵",
-  cavalry: "骑兵"
-};
+const incomingMarches = computed(() => {
+  const city = session.value?.city;
+  if (!city || !world.value) {
+    return [];
+  }
+  return world.value.marches.filter(
+    (item) => !item.mine && item.toX === city.x && item.toY === city.y && item.status === "marching"
+  );
+});
 
 const allianceRoleLabel: Record<string, string> = {
   leader: "盟主",
@@ -330,57 +318,49 @@ function queueName(type?: string): string {
 }
 
 function remainText(finishAt?: string): string {
-  if (!finishAt) {
-    return "";
-  }
-  const ms = Date.parse(finishAt) - nowMs.value;
-  if (ms <= 0) {
-    return "即将完成";
-  }
-  const sec = Math.ceil(ms / 1000);
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return m > 0 ? `${m}分${s}秒` : `${s}秒`;
+  return formatRemain(finishAt, nowMs.value);
 }
 
-function blockedText(reason?: string): string {
-  switch (reason) {
-    case "queue":
-      return "队列占用中";
-    case "maxLevel":
-      return "已满级";
-    case "prerequisite":
-      return "前置未满足";
-    case "resources":
-      return "资源不足";
-    default:
-      return "";
+function setCityZone(zone: "inner" | "outer" | "wall"): void {
+  cityZone.value = zone;
+  gameAudio.play("click");
+  syncAmbient();
+}
+
+function toggleMute(): void {
+  muted.value = gameAudio.toggleMuted();
+  if (!muted.value) {
+    gameAudio.unlock();
+    syncAmbient();
   }
 }
 
-function effectsText(effects?: Record<string, number>): string {
-  if (!effects) {
-    return "";
+function syncAmbient(): void {
+  if (!loggedIn.value || !hasCity.value) {
+    gameAudio.setAmbient("login");
+    return;
   }
-  const labels: Record<string, [string, "percent" | "flat"]> = {
-    populationCap: ["人口上限", "flat"],
-    resourceCap: ["仓库上限", "flat"],
-    attackBonusPercent: ["攻方战力", "percent"],
-    troopPowerBonusPercent: ["兵力战力", "percent"],
-    recruitDiscountPercent: ["征兵减免", "percent"],
-    wallDefenseFlat: ["城防", "flat"],
-    trapBonusPercent: ["陷阱", "percent"],
-    productionBonusPercent: ["田产出", "percent"],
-    troopCap: ["带兵上限", "flat"],
-    wallDefense: ["城防", "flat"],
-    trapBonus: ["陷阱", "percent"]
-  };
-  return Object.entries(effects)
-    .map(([key, value]) => {
-      const [name, kind] = labels[key] ?? [key, "flat"];
-      return kind === "percent" ? `${name}+${value}%` : `${name}+${value}`;
-    })
-    .join(" · ");
+  if (tab.value === "map") {
+    gameAudio.setAmbient("map");
+    return;
+  }
+  if (tab.value === "city" && cityZone.value === "outer") {
+    gameAudio.setAmbient("outer");
+    return;
+  }
+  gameAudio.setAmbient("city");
+}
+
+function spawnCollectFx(collected: { grain: number; wood: number; iron: number; copper: number }): void {
+  const chips = resourceKeys
+    .filter((key) => collected[key] > 0)
+    .map((key) => ({ id: ++flySeq, key, amount: collected[key] }));
+  flyChips.value = chips;
+  window.setTimeout(() => {
+    if (flyChips.value === chips) {
+      flyChips.value = [];
+    }
+  }, 1100);
 }
 
 function protectionText(until?: string): string {
@@ -506,31 +486,37 @@ async function connectHub(): Promise<void> {
     void loadCity();
     error.value = "";
     notice.value = "建造完成";
+    gameAudio.play("complete");
   });
   hub.on("MarchArrived", (payload?: { data?: unknown }) => {
     void loadAll();
     error.value = "";
     notice.value = payload?.data ? "部队已到达" : "斥候已回报";
+    gameAudio.play(payload?.data ? "attack" : "scout");
   });
   hub.on("CityAttacked", () => {
     void loadAll();
     error.value = "";
     notice.value = "本城遭到攻击";
+    gameAudio.play("attack");
   });
   hub.on("TransportArrived", () => {
     void loadAll();
     error.value = "";
     notice.value = "运输已到达";
+    gameAudio.play("transport");
   });
   hub.on("ResourceReceived", () => {
     void loadAll();
     error.value = "";
     notice.value = "收到同盟资源";
+    gameAudio.play("collect");
   });
   hub.on("RecruitComplete", () => {
     void loadArmy();
     error.value = "";
     notice.value = "征兵完成";
+    gameAudio.play("recruit");
   });
   hub.onreconnected(() => {
     void loadAll();
@@ -554,6 +540,7 @@ async function disconnectHub(): Promise<void> {
 onMounted(async () => {
   setUnauthorizedHandler(() => {
     session.value = null;
+    gameAudio.setAmbient("login");
     overview.value = null;
     fields.value = null;
     walls.value = null;
@@ -569,11 +556,16 @@ onMounted(async () => {
     daily.value = null;
     shop.value = null;
     void disconnectHub();
+    gameAudio.setAmbient("login");
   });
+
+  window.addEventListener("pointerdown", () => gameAudio.unlock(), { once: true });
+  syncAmbient();
 
   tick = window.setInterval(() => {
     nowMs.value = Date.now();
-    if (hasCity.value && Date.now() - lastWorldRefresh >= 15000) {
+    const gap = tab.value === "map" ? 5000 : 12000;
+    if (hasCity.value && Date.now() - lastWorldRefresh >= gap) {
       lastWorldRefresh = Date.now();
       void loadWorld().catch(() => undefined);
     }
@@ -624,12 +616,14 @@ watch(hasCity, async (ready) => {
   try {
     await loadAll();
     await connectHub();
+    syncAmbient();
   } catch (err) {
     fail(err);
   }
 });
 
 watch(tab, (value) => {
+  syncAmbient();
   if (value === "map" && hasCity.value) {
     lastWorldRefresh = Date.now();
     void loadWorld().catch(fail);
@@ -654,8 +648,11 @@ async function submitAuth(): Promise<void> {
     saveTokens(tokens.accessToken, tokens.refreshToken, tokens.expiresAt);
     session.value = await fetchSession();
     password.value = "";
+    gameAudio.unlock();
+    syncAmbient();
   } catch (err) {
     fail(err);
+    gameAudio.play("error");
   } finally {
     busy.value = false;
   }
@@ -702,8 +699,10 @@ async function submitUpgrade(type: string): Promise<void> {
     overview.value = await upgradeBuilding(type);
     await Promise.all([loadCity(), loadDaily()]);
     notice.value = `已开始${queueName(type) || "建造"}`;
+    gameAudio.play("build");
   } catch (err) {
     fail(err);
+    gameAudio.play("error");
   } finally {
     busy.value = false;
   }
@@ -717,8 +716,10 @@ async function submitFieldUpgrade(type: string): Promise<void> {
     fields.value = await upgradeField(type);
     await Promise.all([loadCity(), loadDaily()]);
     notice.value = `已开始${queueName(type) || "建造"}`;
+    gameAudio.play("build");
   } catch (err) {
     fail(err);
+    gameAudio.play("error");
   } finally {
     busy.value = false;
   }
@@ -732,8 +733,10 @@ async function submitWallUpgrade(type: string): Promise<void> {
     walls.value = await upgradeWall(type);
     await Promise.all([loadCity(), loadDaily()]);
     notice.value = `已开始${queueName(type) || "建造"}`;
+    gameAudio.play("build");
   } catch (err) {
     fail(err);
+    gameAudio.play("error");
   } finally {
     busy.value = false;
   }
@@ -765,6 +768,8 @@ async function submitCollect(type?: string): Promise<void> {
       .map((key) => `${resourceLabel[key]}${collected[key]}`);
     if (parts.length) {
       notice.value = `已收取 ${parts.join(" ")}`;
+      spawnCollectFx(collected);
+      gameAudio.play("collect");
       await loadDaily();
     } else if (result.message && result.message !== "ok") {
       notice.value = result.message;
@@ -773,6 +778,7 @@ async function submitCollect(type?: string): Promise<void> {
     }
   } catch (err) {
     fail(err);
+    gameAudio.play("error");
   } finally {
     busy.value = false;
   }
@@ -793,8 +799,10 @@ async function submitRecruit(): Promise<void> {
     notice.value = army.value.recruitQueue
       ? `已下达征兵 ${recruitCount.value} 名${troopLabel[recruitType.value] ?? "士兵"}，剩余 ${remainText(army.value.recruitQueue.finishAt)}`
       : `已征${recruitCount.value}名${troopLabel[recruitType.value] ?? "士兵"}`;
+    gameAudio.play("recruit");
   } catch (err) {
     fail(err);
+    gameAudio.play("error");
   } finally {
     busy.value = false;
   }
@@ -834,8 +842,10 @@ async function submitMarch(): Promise<void> {
     await Promise.all([loadWorld(), loadReports(), loadCity(), loadDaily()]);
     tab.value = "map";
     notice.value = "已出征，队伍正在赶路";
+    gameAudio.play("march");
   } catch (err) {
     fail(err);
+    gameAudio.play("error");
   } finally {
     busy.value = false;
   }
@@ -858,8 +868,10 @@ async function submitScout(): Promise<void> {
     await Promise.all([loadWorld(), loadMail(), loadDaily()]);
     tab.value = "map";
     notice.value = "斥候已出发，到点后看邮件";
+    gameAudio.play("scout");
   } catch (err) {
     fail(err);
+    gameAudio.play("error");
   } finally {
     busy.value = false;
   }
@@ -870,6 +882,7 @@ async function submitClaimDaily(missionType: string): Promise<void> {
     daily.value = await claimDaily(missionType);
     await loadCity();
     notice.value = "已领取犒赏";
+    gameAudio.play("claim");
   });
 }
 
@@ -901,6 +914,7 @@ async function submitTrade(): Promise<void> {
     );
     await Promise.all([loadCity(), loadWorld(), loadMail(), loadDaily()]);
     notice.value = "已出发前往市集";
+    gameAudio.play("transport");
   });
 }
 
@@ -919,6 +933,7 @@ async function submitAid(): Promise<void> {
     );
     await Promise.all([loadCity(), loadWorld(), loadMail(), loadAlliance()]);
     notice.value = "资源运输已出发";
+    gameAudio.play("transport");
   });
 }
 
@@ -930,6 +945,7 @@ async function run(action: () => Promise<void>): Promise<void> {
     await action();
   } catch (err) {
     fail(err);
+    gameAudio.play("error");
   } finally {
     busy.value = false;
   }
@@ -1087,6 +1103,7 @@ async function submitLogout(): Promise<void> {
     await disconnectHub();
     clearTokens();
     session.value = null;
+    gameAudio.setAmbient("login");
     overview.value = null;
     fields.value = null;
     walls.value = null;
@@ -1107,11 +1124,20 @@ async function submitLogout(): Promise<void> {
 </script>
 
 <template>
+  <div class="fly-layer">
+    <span v-for="chip in flyChips" :key="chip.id" class="fly-chip">
+      <img :src="resourceArt[chip.key]" :alt="resourceLabel[chip.key]" />
+      +{{ chip.amount }}
+    </span>
+  </div>
   <main class="page" :class="{ wide: hasCity }">
     <header v-if="!hasCity" class="header splash">
       <img class="splash-art" src="/art/palace.jpg" alt="" />
       <h1>战国</h1>
       <p class="sub">建城 · 内政 · 出征 · 军务 · 地图 · 联盟</p>
+      <p>
+        <button type="button" class="link" @click="toggleMute">{{ muted ? "音效关" : "音效开" }}</button>
+      </p>
     </header>
     <div v-else class="hud-stack">
       <header class="hud-top">
@@ -1140,6 +1166,7 @@ async function submitLogout(): Promise<void> {
         </div>
         <div class="who">
           <span>{{ session?.username }}</span>
+          <button type="button" class="link sound-toggle" @click="toggleMute">{{ muted ? "音效关" : "音效开" }}</button>
           <button type="button" class="link" @click="submitLogout">退出</button>
         </div>
       </header>
@@ -1168,13 +1195,16 @@ async function submitLogout(): Promise<void> {
         征兵中：{{ troopLabel[army.recruitQueue.troopType] ?? army.recruitQueue.troopType }}
         × {{ army.recruitQueue.count }}，剩余 {{ remainText(army.recruitQueue.finishAt) }}
       </p>
+      <p v-if="incomingMarches.length" class="queue-banner incoming-banner">
+        敌军逼近本城 {{ incomingMarches.length }} 路
+      </p>
     </div>
 
     <p v-if="loading" class="hint">加载中…</p>
 
     <section v-else class="card">
-      <p v-if="error" class="error">{{ error }}</p>
-      <p v-if="notice" class="hint">{{ notice }}</p>
+      <p v-if="error" class="error toast">{{ error }}</p>
+      <p v-if="notice" class="hint toast">{{ notice }}</p>
 
       <form v-if="!loggedIn" class="form" @submit.prevent="submitAuth">
         <div class="tabs">
@@ -1222,148 +1252,41 @@ async function submitLogout(): Promise<void> {
         </section>
 
         <template v-else>
-          <section v-if="tab === 'city' && overview" class="block">
-            <h2>城内</h2>
-            <ul class="cards">
-              <li
-                v-for="item in overview.buildings"
-                :key="item.type"
-                class="portrait-card"
-                :class="{ locked: Boolean(item.blockedReason), upgrading: item.status === 'upgrading' }"
-              >
-                <div class="portrait">
-                  <img :src="buildingPortrait(item.type)" :alt="item.name" />
-                  <span class="lv">{{ item.level }}/{{ item.maxLevel }}</span>
-                </div>
-                <div class="info">
-                  <strong>{{ item.name }}</strong>
-                  <div class="level-bar"><i :style="{ width: levelWidth(item.level, item.maxLevel) }"></i></div>
-                  <span v-if="effectsText(item.effects)" class="hint">{{ effectsText(item.effects) }}</span>
-                  <span v-if="item.status === 'upgrading'" class="hint">
-                    升级中 {{ remainText(item.finishAt) }}
-                  </span>
-                  <span v-else-if="blockedText(item.blockedReason)" class="hint">{{
-                    blockedText(item.blockedReason)
-                  }}</span>
-                  <div v-if="item.next" class="cost-row">
-                    <span v-for="part in costParts(item.next)" :key="part.key" class="cost-chip">
-                      <img :src="resourceArt[part.key]" :alt="resourceLabel[part.key]" />
-                      {{ part.amount }}
-                    </span>
-                    <span class="cost-chip time">{{ item.next.durationSeconds }}秒</span>
-                  </div>
-                </div>
-                <div class="card-actions">
-                  <button
-                    type="button"
-                    :disabled="busy || item.status === 'upgrading' || Boolean(item.blockedReason)"
-                    @click="submitUpgrade(item.type)"
-                  >
-                    {{ item.level === 0 ? "建造" : "升级" }}
-                  </button>
-                </div>
-              </li>
-            </ul>
-          </section>
-
-          <section v-if="tab === 'city' && fields" class="block">
-            <h2>城外</h2>
-            <p class="hint">主殿生效 1 级后可建；产出按上次收取时间现算，点收取才入库。</p>
-            <p>
-              <button type="button" :disabled="busy" @click="submitCollect()">一键收取</button>
-            </p>
-            <ul class="cards">
-              <li
-                v-for="item in fields.fields"
-                :key="item.type"
-                class="portrait-card"
-                :class="{ locked: Boolean(item.blockedReason), upgrading: item.status === 'upgrading' }"
-              >
-                <div class="portrait">
-                  <img :src="buildingPortrait(item.type)" :alt="item.name" />
-                  <span class="lv">{{ item.level }}/{{ item.maxLevel }}</span>
-                </div>
-                <div class="info">
-                  <strong>{{ item.name }}</strong>
-                  <div class="level-bar"><i :style="{ width: levelWidth(item.level, item.maxLevel) }"></i></div>
-                  <span v-if="item.level >= 1" class="hint">{{ item.ratePerHour }}/时</span>
-                  <span v-if="item.pending > 0" class="pending-chip">
-                    可收 {{ item.pending }} / {{ item.fieldCap }} {{ resourceLabel[item.resource] }}
-                  </span>
-                  <span v-if="item.status === 'upgrading'" class="hint">
-                    升级中 {{ remainText(item.finishAt) }}
-                  </span>
-                  <span v-else-if="blockedText(item.blockedReason)" class="hint">{{
-                    blockedText(item.blockedReason)
-                  }}</span>
-                  <div v-if="item.next" class="cost-row">
-                    <span v-for="part in costParts(item.next)" :key="part.key" class="cost-chip">
-                      <img :src="resourceArt[part.key]" :alt="resourceLabel[part.key]" />
-                      {{ part.amount }}
-                    </span>
-                    <span class="cost-chip time">{{ item.next.durationSeconds }}秒</span>
-                  </div>
-                </div>
-                <div class="card-actions">
-                  <button type="button" :disabled="busy || item.level < 1" @click="submitCollect(item.type)">
-                    收取
-                  </button>
-                  <button
-                    type="button"
-                    :disabled="busy || item.status === 'upgrading' || Boolean(item.blockedReason)"
-                    @click="submitFieldUpgrade(item.type)"
-                  >
-                    {{ item.level === 0 ? "建造" : "升级" }}
-                  </button>
-                </div>
-              </li>
-            </ul>
-          </section>
-
-          <section v-if="tab === 'city' && walls" class="block">
-            <h2>城墙</h2>
-            <p class="res">守城 {{ walls.wallDefense }} · 陷阱加成 {{ Math.round(walls.trapBonus * 100) }}%</p>
-            <p class="hint">主殿 2 级可建箭塔 / 城门，3 级可建陷阱。与城内、城外共用一条建造队列。</p>
-            <ul class="cards">
-              <li
-                v-for="item in walls.walls"
-                :key="item.type"
-                class="portrait-card"
-                :class="{ locked: Boolean(item.blockedReason), upgrading: item.status === 'upgrading' }"
-              >
-                <div class="portrait">
-                  <img :src="buildingPortrait(item.type)" :alt="item.name" />
-                  <span class="lv">{{ item.level }}/{{ item.maxLevel }}</span>
-                </div>
-                <div class="info">
-                  <strong>{{ item.name }}</strong>
-                  <div class="level-bar"><i :style="{ width: levelWidth(item.level, item.maxLevel) }"></i></div>
-                  <span v-if="effectsText(item.effects)" class="hint">{{ effectsText(item.effects) }}</span>
-                  <span v-if="item.status === 'upgrading'" class="hint">
-                    升级中 {{ remainText(item.finishAt) }}
-                  </span>
-                  <span v-else-if="blockedText(item.blockedReason)" class="hint">{{
-                    blockedText(item.blockedReason)
-                  }}</span>
-                  <div v-if="item.next" class="cost-row">
-                    <span v-for="part in costParts(item.next)" :key="part.key" class="cost-chip">
-                      <img :src="resourceArt[part.key]" :alt="resourceLabel[part.key]" />
-                      {{ part.amount }}
-                    </span>
-                    <span class="cost-chip time">{{ item.next.durationSeconds }}秒</span>
-                  </div>
-                </div>
-                <div class="card-actions">
-                  <button
-                    type="button"
-                    :disabled="busy || item.status === 'upgrading' || Boolean(item.blockedReason)"
-                    @click="submitWallUpgrade(item.type)"
-                  >
-                    {{ item.level === 0 ? "建造" : "升级" }}
-                  </button>
-                </div>
-              </li>
-            </ul>
+          <section v-if="tab === 'city'" class="block city-play">
+            <div class="zone-tabs">
+              <button type="button" :class="{ active: cityZone === 'inner' }" @click="setCityZone('inner')">城内</button>
+              <button type="button" :class="{ active: cityZone === 'outer' }" @click="setCityZone('outer')">城外</button>
+              <button type="button" :class="{ active: cityZone === 'wall' }" @click="setCityZone('wall')">城墙</button>
+            </div>
+            <CityScene
+              v-if="cityZone === 'inner' && overview"
+              mode="inner"
+              :items="overview.buildings"
+              :busy="busy"
+              :now-ms="nowMs"
+              @upgrade="submitUpgrade"
+              @pick="gameAudio.play('click')"
+            />
+            <OuterScene
+              v-else-if="cityZone === 'outer' && fields"
+              :items="fields.fields"
+              :busy="busy"
+              :now-ms="nowMs"
+              @upgrade="submitFieldUpgrade"
+              @collect="submitCollect"
+              @pick="gameAudio.play('click')"
+            />
+            <CityScene
+              v-else-if="cityZone === 'wall' && walls"
+              mode="wall"
+              :items="walls.walls"
+              :busy="busy"
+              :now-ms="nowMs"
+              :wall-defense="walls.wallDefense"
+              :trap-bonus="walls.trapBonus"
+              @upgrade="submitWallUpgrade"
+              @pick="gameAudio.play('click')"
+            />
           </section>
 
           <section v-if="tab === 'army' && army" class="block">
@@ -1487,7 +1410,9 @@ async function submitLogout(): Promise<void> {
               <span><img src="/art/marker-march.jpg" alt="" />行军（金线出征 / 青线斥候）</span>
               <span><img src="/art/marker-cart.jpg" alt="" />运输马车</span>
             </div>
-            <p class="hint">拖拽移动，滚轮对着指针缩放，点「回城」回到本城。蓝圈为保护中。点击据点或玩家城可出征或侦察，点击市集兑换。</p>
+            <p class="hint">
+              地形、天气与昼夜会随时间变化；行军扬尘、流寇脉冲和标签实时更新。拖拽移动，滚轮对着指针缩放，点「回城」回到本城。
+            </p>
             <WorldMap :world="world" :active="tab === 'map'" @select="onSelectTarget" />
           </section>
 

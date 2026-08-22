@@ -11,6 +11,7 @@ const props = defineProps<{
   nowMs: number;
   wallDefense?: number;
   trapBonus?: number;
+  threatened?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -33,9 +34,9 @@ const layouts: Record<
     barracks: { x: 50, y: 70, w: 13, z: 5 }
   },
   wall: {
-    arrowTower: { x: 16, y: 28, w: 13, z: 2 },
-    gate: { x: 50, y: 74, w: 16, z: 5 },
-    trap: { x: 84, y: 46, w: 12, z: 3 }
+    arrowTower: { x: 18, y: 26, w: 15, z: 2 },
+    gate: { x: 50, y: 72, w: 18, z: 5 },
+    trap: { x: 82, y: 44, w: 14, z: 3 }
   }
 };
 
@@ -63,11 +64,13 @@ function broken(ev: Event): void {
 
 <template>
   <div class="scene-shell">
-    <div class="scene" :class="[mode, phase]">
+    <div class="scene" :class="[mode, phase, { threatened }]">
       <div class="sky"></div>
       <div class="ridge"></div>
       <div class="haze"></div>
-      <div class="ground"></div>
+      <div class="ground" :class="{ stone: mode === 'wall' }"></div>
+      <div v-if="mode === 'wall'" class="moat"></div>
+      <div v-if="mode === 'wall'" class="rampart"></div>
       <div class="plaza"></div>
       <div class="wall-band left"></div>
       <div class="wall-band right"></div>
@@ -75,10 +78,14 @@ function broken(ev: Event): void {
       <div class="gate-road"></div>
       <i class="bird a"></i>
       <i class="bird b"></i>
-      <i class="walker a"></i>
-      <i class="walker b"></i>
+      <i v-if="mode === 'inner'" class="walker a"></i>
+      <i v-if="mode === 'inner'" class="walker b"></i>
+      <i v-if="mode === 'wall'" class="sentry a"></i>
+      <i v-if="mode === 'wall'" class="sentry b"></i>
       <i class="banner left"></i>
       <i class="banner right"></i>
+      <i v-if="mode === 'wall'" class="torch a"></i>
+      <i v-if="mode === 'wall'" class="torch b"></i>
       <i v-for="n in 8" :key="n" class="firefly" :style="{ '--i': n }"></i>
       <button
         v-for="plot in plots"
@@ -142,9 +149,12 @@ function broken(ev: Event): void {
         </button>
       </div>
     </aside>
-    <p v-else class="hint scene-tip">点选城中建筑，可查看效果并下令建造。</p>
+    <p v-else class="hint scene-tip">
+      {{ mode === "wall" ? "点选箭塔、城门或陷阱，可加固城防。" : "点选城中建筑，可查看效果并下令建造。" }}
+    </p>
     <p v-if="mode === 'wall'" class="hint scene-tip">
       守城 {{ wallDefense ?? 0 }} · 陷阱加成 {{ Math.round((trapBonus ?? 0) * 100) }}%
+      <template v-if="threatened"> · 敌军压境，守军已上墙</template>
     </p>
   </div>
 </template>

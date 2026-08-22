@@ -10,6 +10,8 @@ const props = defineProps<{
   nowMs: number;
   relocateX: number;
   relocateY: number;
+  mapWidth?: number;
+  mapHeight?: number;
 }>();
 
 const emit = defineEmits<{
@@ -164,8 +166,8 @@ function broken(ev: Event): void {
         </span>
         <span v-else-if="extraAlready(selected.item.type)" class="hint">该队列已扩充，无需再用。</span>
         <div v-if="selected.item.type === 'relocateTarget'" class="form inline shop-coords">
-          <label>目标 X <input :value="relocateX" type="number" min="0" @input="emit('update:relocateX', Number(($event.target as HTMLInputElement).value) || 0)" /></label>
-          <label>目标 Y <input :value="relocateY" type="number" min="0" @input="emit('update:relocateY', Number(($event.target as HTMLInputElement).value) || 0)" /></label>
+          <label>目标 X <input :value="relocateX" type="number" min="0" :max="Math.max(0, (mapWidth ?? 200) - 1)" @input="emit('update:relocateX', Number(($event.target as HTMLInputElement).value) || 0)" /></label>
+          <label>目标 Y <input :value="relocateY" type="number" min="0" :max="Math.max(0, (mapHeight ?? 200) - 1)" @input="emit('update:relocateY', Number(($event.target as HTMLInputElement).value) || 0)" /></label>
         </div>
       </div>
       <div class="card-actions shop-actions">

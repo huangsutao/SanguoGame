@@ -308,7 +308,7 @@ public sealed class MarchService
             {
                 if (outpost is not null)
                 {
-                    await _orm.Delete<OutpostEntity>().WithTransaction(transaction).Where(o => o.Id == outpost.Id).ExecuteAffrowsAsync(ct);
+                    await DeleteOutpostAsync(transaction, outpost, ct);
                 }
 
                 return await FinishEmptyAsync(transaction, current, attacker, "目标据点已消失", ct);
@@ -340,7 +340,7 @@ public sealed class MarchService
                 ReturnTroops(attacker, outcome.AttackerAfter, InnerBuildingCatalog.TroopCap(barracks));
                 if (outpost.Kind == OutpostKind.Roaming)
                 {
-                    await _orm.Delete<OutpostEntity>().WithTransaction(transaction).Where(o => o.Id == outpost.Id).ExecuteAffrowsAsync(ct);
+                    await DeleteOutpostAsync(transaction, outpost, ct);
                 }
                 else
                 {
@@ -720,6 +720,18 @@ public sealed class MarchService
 
     private static void ReturnTroops(CityEntity city, TroopCount returned, int cap) =>
         CityStats.ApplyTroops(city, CityStats.FitCap(CityStats.Troops(city).Add(returned), cap));
+
+    private async Task DeleteOutpostAsync(
+        DbTransaction transaction,
+        OutpostEntity outpost,
+        CancellationToken cancellationToken)
+    {
+        await _orm.Delete<OutpostEntity>()
+            .WithTransaction(transaction)
+            .Where(o => o.Id == outpost.Id)
+            .ExecuteAffrowsAsync(cancellationToken);
+        await WorldOccupancy.ReleaseAsync(_orm, outpost.X, outpost.Y, cancellationToken, transaction);
+    }
 
     private async Task<BattleReportDto> FinishEmptyAsync(
         DbTransaction transaction,

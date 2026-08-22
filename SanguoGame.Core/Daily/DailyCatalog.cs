@@ -24,7 +24,7 @@ public static class DailyCatalog
         new(Upgrade, "营建城池", "下达一次建造或升级", 1, new ResourceAmount(0, 200, 0, 0)),
         new(Recruit, "扩军备战", "累计征兵 10 名", 10, new ResourceAmount(0, 0, 100, 0)),
         new(Raid, "讨伐据点", "战胜一座据点", 1, new ResourceAmount(0, 0, 0, 80)),
-        new(Trade, "市集贸易", "完成一次市集兑换", 1, new ResourceAmount(150, 150, 0, 0)),
+        new(Trade, "市集贸易", "成功出发一次市集兑换", 1, new ResourceAmount(150, 150, 0, 0)),
         new(Bundle, "今日犒赏", "完成其余全部军务", 5, new ResourceAmount(400, 400, 80, 40))
     ];
 

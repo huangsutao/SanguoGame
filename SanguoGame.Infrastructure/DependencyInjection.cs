@@ -46,7 +46,8 @@ public static class DependencyInjection
                     typeof(DailyQuestEntity),
                     typeof(ItemEntity),
                     typeof(BuffEntity),
-                    typeof(RecruitEntity));
+                    typeof(RecruitEntity),
+                    typeof(MapCellEntity));
 
                 orm.Ado.ExecuteNonQuery("""
                     UPDATE sg_city
@@ -101,6 +102,32 @@ public static class DependencyInjection
                 UPDATE sg_city
                 SET recruit_type = NULL, recruit_count = 0, recruit_finish_at = NULL
                 WHERE recruit_type IS NOT NULL OR recruit_finish_at IS NOT NULL
+                """);
+
+            orm.Ado.ExecuteNonQuery("""
+                CREATE TABLE IF NOT EXISTS sg_map_cell (
+                    x int NOT NULL,
+                    y int NOT NULL,
+                    kind varchar(16) NOT NULL,
+                    owner_id int8 NOT NULL DEFAULT 0,
+                    PRIMARY KEY (x, y)
+                )
+                """);
+
+            orm.Ado.ExecuteNonQuery("""
+                INSERT INTO sg_map_cell (x, y, kind, owner_id)
+                SELECT x, y, 'city', id FROM sg_city
+                ON CONFLICT DO NOTHING
+                """);
+            orm.Ado.ExecuteNonQuery("""
+                INSERT INTO sg_map_cell (x, y, kind, owner_id)
+                SELECT x, y, 'outpost', id FROM sg_outpost
+                ON CONFLICT DO NOTHING
+                """);
+            orm.Ado.ExecuteNonQuery("""
+                INSERT INTO sg_map_cell (x, y, kind, owner_id)
+                SELECT x, y, 'market', id FROM sg_market
+                ON CONFLICT DO NOTHING
                 """);
 
             return orm;

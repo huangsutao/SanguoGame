@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using SanguoGame.Core.Army;
 using SanguoGame.Core.Buildings;
 using SanguoGame.Core.Market;
+using SanguoGame.Core.Social;
 using SanguoGame.Core.World;
 using SanguoGame.Infrastructure.Entities;
 using SanguoGame.Server;
@@ -189,6 +190,7 @@ public sealed class GameApiFactory : WebApplicationFactory<Program>, IAsyncLifet
                 sg_transport,
                 sg_recruit,
                 sg_building,
+                sg_map_cell,
                 sg_outpost,
                 sg_market,
                 sg_city,
@@ -251,19 +253,21 @@ public sealed class GameApiFactory : WebApplicationFactory<Program>, IAsyncLifet
     {
         await using var scope = Services.CreateAsyncScope();
         var orm = scope.ServiceProvider.GetRequiredService<IFreeSql>();
-        return await orm.Insert(new MarketEntity
+        var id = await orm.Insert(new MarketEntity
         {
             Name = $"测试市集·{x},{y}",
             X = x,
             Y = y
         }).ExecuteIdentityAsync();
+        await WorldOccupancy.TryClaimAsync(orm, x, y, MapCellKinds.Market, id, CancellationToken.None);
+        return id;
     }
 
     public async Task<long> InsertOutpostAsync(int x, int y, int garrison = 1)
     {
         await using var scope = Services.CreateAsyncScope();
         var orm = scope.ServiceProvider.GetRequiredService<IFreeSql>();
-        return await orm.Insert(new OutpostEntity
+        var id = await orm.Insert(new OutpostEntity
         {
             Type = "village",
             Name = $"测试村·{x},{y}",
@@ -272,13 +276,15 @@ public sealed class GameApiFactory : WebApplicationFactory<Program>, IAsyncLifet
             Garrison = garrison,
             Kind = OutpostKind.Permanent
         }).ExecuteIdentityAsync();
+        await WorldOccupancy.TryClaimAsync(orm, x, y, MapCellKinds.Outpost, id, CancellationToken.None);
+        return id;
     }
 
     public async Task<long> InsertRoamingOutpostAsync(int x, int y, DateTime expiresAt, int garrison = 25)
     {
         await using var scope = Services.CreateAsyncScope();
         var orm = scope.ServiceProvider.GetRequiredService<IFreeSql>();
-        return await orm.Insert(new OutpostEntity
+        var id = await orm.Insert(new OutpostEntity
         {
             Type = "bandit",
             Name = $"测试流寇·{x},{y}",
@@ -288,6 +294,8 @@ public sealed class GameApiFactory : WebApplicationFactory<Program>, IAsyncLifet
             Kind = OutpostKind.Roaming,
             ExpiresAt = expiresAt
         }).ExecuteIdentityAsync();
+        await WorldOccupancy.TryClaimAsync(orm, x, y, MapCellKinds.Outpost, id, CancellationToken.None);
+        return id;
     }
 
     public async Task TickRoamingOutpostsAsync()
@@ -302,6 +310,11 @@ public sealed class GameApiFactory : WebApplicationFactory<Program>, IAsyncLifet
         await using var scope = Services.CreateAsyncScope();
         var orm = scope.ServiceProvider.GetRequiredService<IFreeSql>();
         var occupied = new HashSet<(int, int)>();
+        foreach (var cell in await orm.Select<MapCellEntity>().ToListAsync(CancellationToken.None))
+        {
+            occupied.Add((cell.X, cell.Y));
+        }
+
         foreach (var city in await orm.Select<CityEntity>().ToListAsync(CancellationToken.None))
         {
             occupied.Add((city.X, city.Y));
@@ -395,6 +408,39 @@ public sealed class GameApiFactory : WebApplicationFactory<Program>, IAsyncLifet
         if (updated != 1)
         {
             throw new InvalidOperationException($"未能回拨田收取时间 cityId={cityId} type={fieldType}");
+        }
+    }
+
+    public async Task FillAllianceMembersAsync(long allianceId, int count)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var orm = scope.ServiceProvider.GetRequiredService<IFreeSql>();
+        var now = DateTime.UtcNow;
+        for (var i = 0; i < count; i++)
+        {
+            var tag = Guid.NewGuid().ToString("N")[..8];
+            var account = new AccountEntity
+            {
+                Username = "f" + tag,
+                UsernameNormalized = "f" + tag,
+                PasswordHash = "x",
+                CreatedAt = now
+            };
+            account.Id = await orm.Insert(account).ExecuteIdentityAsync();
+            var character = new CharacterEntity
+            {
+                AccountId = account.Id,
+                Name = "填" + tag,
+                CreatedAt = now
+            };
+            character.Id = await orm.Insert(character).ExecuteIdentityAsync();
+            await orm.Insert(new AllianceMemberEntity
+            {
+                AllianceId = allianceId,
+                CharacterId = character.Id,
+                Role = AllianceRole.Member,
+                JoinedAt = now
+            }).ExecuteAffrowsAsync();
         }
     }
 

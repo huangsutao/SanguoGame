@@ -12,7 +12,7 @@ export type SfxName =
   | "mail"
   | "claim";
 
-export type AmbientName = "none" | "login" | "city" | "outer" | "map";
+export type AmbientName = "none" | "login" | "city" | "outer" | "map" | "shop" | "army" | "wall";
 
 const MUTE_KEY = "sanguo.audio.muted";
 
@@ -178,6 +178,27 @@ class GameAudio {
       const pad = padLoop(ctx, dest, [174, 220, 261], 0.028);
       const breeze = wind(ctx, dest, 0.03, 420);
       this.handles = join(pad, breeze);
+      return;
+    }
+    if (name === "shop") {
+      const pad = padLoop(ctx, dest, [262, 330, 392, 440], 0.022);
+      const murmur = wind(ctx, dest, 0.022, 640);
+      const chatter = chirpLoop(ctx, dest, 3.2);
+      this.handles = join(pad, murmur, chatter);
+      return;
+    }
+    if (name === "army") {
+      const pad = padLoop(ctx, dest, [146, 196, 220], 0.03);
+      const dust = wind(ctx, dest, 0.02, 260);
+      const drums = distantDrum(ctx, dest, 2800);
+      this.handles = join(pad, dust, drums);
+      return;
+    }
+    if (name === "wall") {
+      const pad = padLoop(ctx, dest, [130, 164, 196], 0.028);
+      const gale = wind(ctx, dest, 0.032, 200);
+      const drums = distantDrum(ctx, dest, 6400);
+      this.handles = join(pad, gale, drums);
       return;
     }
     const pad = padLoop(ctx, dest, [146, 196, 246, 164], 0.026);
@@ -384,14 +405,14 @@ function chirpLoop(ctx: AudioContext, dest: AudioNode, every: number): AmbientHa
   };
 }
 
-function distantDrum(ctx: AudioContext, dest: AudioNode): AmbientHandles {
+function distantDrum(ctx: AudioContext, dest: AudioNode, every = 5200): AmbientHandles {
   const tick = () => {
     if (ctx.state !== "running") {
       return;
     }
     drum(ctx, dest, ctx.currentTime + 0.02);
   };
-  const id = window.setInterval(tick, 5200);
+  const id = window.setInterval(tick, every);
   return { stop: () => window.clearInterval(id) };
 }
 

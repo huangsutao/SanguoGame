@@ -77,7 +77,10 @@ import type { HubConnection } from "@microsoft/signalr";
 import WorldMap from "./WorldMap.vue";
 import CityScene from "./CityScene.vue";
 import OuterScene from "./OuterScene.vue";
-import { resourceArt, resourceKeys, troopPortrait } from "./art";
+import GateScene from "./GateScene.vue";
+import ShopScene from "./ShopScene.vue";
+import BarracksScene from "./BarracksScene.vue";
+import { resourceArt, resourceKeys } from "./art";
 import { gameAudio } from "./audio";
 import { calibratedNow, incomingOnCity, remainText as formatRemain, resourceLabel, troopLabel } from "./format";
 
@@ -130,7 +133,6 @@ const aidIron = ref(0);
 const aidCopper = ref(0);
 const daily = ref<DailyOverviewDto | null>(null);
 const shop = ref<ShopOverviewDto | null>(null);
-const shopBuyCount = ref<Record<string, number>>({});
 const relocateX = ref(0);
 const relocateY = ref(0);
 
@@ -161,10 +163,6 @@ const hudCap = computed(
     daily.value?.resourceCap ??
     markets.value?.resourceCap ??
     0
-);
-
-const selectedTroop = computed(() =>
-  army.value?.troopTypes?.find((item) => item.type === recruitType.value)
 );
 
 const selectedMarket = computed(() =>
@@ -357,8 +355,20 @@ function syncAmbient(): void {
     gameAudio.setAmbient("map");
     return;
   }
+  if (tab.value === "shop") {
+    gameAudio.setAmbient("shop");
+    return;
+  }
+  if (tab.value === "army") {
+    gameAudio.setAmbient("army");
+    return;
+  }
   if (tab.value === "city" && cityZone.value === "outer") {
     gameAudio.setAmbient("outer");
+    return;
+  }
+  if (tab.value === "city" && cityZone.value === "wall") {
+    gameAudio.setAmbient("wall");
     return;
   }
   gameAudio.setAmbient("city");
@@ -1072,28 +1082,22 @@ async function submitAllianceNotice(): Promise<void> {
   });
 }
 
-function shopCount(type: string): number {
-  const value = shopBuyCount.value[type];
-  if (!Number.isFinite(value) || value < 1) {
-    return 1;
-  }
-  return Math.min(99, Math.floor(value));
-}
-
-async function submitBuy(item: ShopCatalogItemDto): Promise<void> {
+async function submitBuy(item: ShopCatalogItemDto, count = 1): Promise<void> {
   await run(async () => {
-    shop.value = await buyShopItem(item.type, shopCount(item.type));
-    notice.value = `已购买 ${item.name} × ${shopCount(item.type)}`;
+    const qty = Math.max(1, Math.min(99, Math.floor(count) || 1));
+    shop.value = await buyShopItem(item.type, qty);
+    notice.value = `已购买 ${item.name} × ${qty}`;
+    gameAudio.play("claim");
   });
 }
 
-async function submitUse(item: ShopCatalogItemDto): Promise<void> {
+async function submitUse(item: ShopCatalogItemDto, count = 1): Promise<void> {
   await run(async () => {
-    const count = item.kind === "buff" ? shopCount(item.type) : 1;
+    const qty = item.kind === "buff" ? Math.max(1, Math.min(99, Math.floor(count) || 1)) : 1;
     if (item.type === "relocateTarget") {
       shop.value = await useShopItem(item.type, 1, relocateX.value, relocateY.value);
     } else {
-      shop.value = await useShopItem(item.type, count);
+      shop.value = await useShopItem(item.type, qty);
     }
     if (session.value?.city && shop.value) {
       session.value = {
@@ -1103,6 +1107,7 @@ async function submitUse(item: ShopCatalogItemDto): Promise<void> {
     }
     await Promise.all([loadCity(), loadArmy(), loadWorld(), loadShop()]);
     notice.value = item.type.startsWith("relocate") ? "迁城成功" : `已使用 ${item.name}`;
+    gameAudio.play(item.type.startsWith("relocate") ? "march" : "claim");
   });
 }
 
@@ -1146,16 +1151,8 @@ async function submitLogout(): Promise<void> {
       +{{ chip.amount }}
     </span>
   </div>
-  <main class="page" :class="{ wide: hasCity }">
-    <header v-if="!hasCity" class="header splash">
-      <img class="splash-art" src="/art/palace.jpg" alt="" />
-      <h1>战国</h1>
-      <p class="sub">建城 · 内政 · 出征 · 军务 · 地图 · 联盟</p>
-      <p>
-        <button type="button" class="link" @click="toggleMute">{{ muted ? "音效关" : "音效开" }}</button>
-      </p>
-    </header>
-    <div v-else class="hud-stack">
+  <main class="page" :class="{ wide: hasCity, 'scene-page': !hasCity }">
+    <div v-if="hasCity" class="hud-stack">
       <header class="hud-top">
         <div class="brand">
           <img class="brand-seal" src="/art/palace.jpg" alt="" />
@@ -1218,14 +1215,29 @@ async function submitLogout(): Promise<void> {
 
     <p v-if="loading" class="hint">加载中…</p>
 
-    <section v-else class="card">
+    <GateScene
+      v-else-if="!hasCity"
+      :now-ms="nowMs"
+      :stage="!loggedIn ? 'auth' : !hasCharacter ? 'character' : 'found'"
+      @click="gameAudio.unlock()"
+    >
       <p v-if="error" class="error toast">{{ error }}</p>
       <p v-if="notice" class="hint toast">{{ notice }}</p>
-
+      <p>
+        <button type="button" class="link" @click="toggleMute">{{ muted ? "音效关" : "音效开" }}</button>
+      </p>
       <form v-if="!loggedIn" class="form" @submit.prevent="submitAuth">
         <div class="tabs">
-          <button type="button" :class="{ active: mode === 'login' }" @click="mode = 'login'">登录</button>
-          <button type="button" :class="{ active: mode === 'register' }" @click="mode = 'register'">注册</button>
+          <button type="button" :class="{ active: mode === 'login' }" @click="mode = 'login'; gameAudio.play('click')">
+            登录
+          </button>
+          <button
+            type="button"
+            :class="{ active: mode === 'register' }"
+            @click="mode = 'register'; gameAudio.play('click')"
+          >
+            注册
+          </button>
         </div>
         <label>
           用户名
@@ -1241,15 +1253,13 @@ async function submitLogout(): Promise<void> {
             placeholder="至少 8 位"
           />
         </label>
-        <button type="submit" :disabled="busy">{{ mode === "register" ? "注册并进入" : "登录" }}</button>
+        <button type="submit" :disabled="busy">{{ mode === "register" ? "注册并入城" : "登录入城" }}</button>
       </form>
-
-      <div v-else class="play">
-        <div v-if="!hasCity" class="who">
+      <div v-else>
+        <div class="who">
           <span>账号 {{ session?.username }}</span>
           <button type="button" class="link" @click="submitLogout">退出</button>
         </div>
-
         <section v-if="!hasCharacter" class="block">
           <h2>创建角色</h2>
           <form class="form" @submit.prevent="submitCharacter">
@@ -1260,14 +1270,19 @@ async function submitLogout(): Promise<void> {
             <button type="submit" :disabled="busy">创建角色</button>
           </form>
         </section>
-
-        <section v-else-if="!hasCity" class="block">
+        <section v-else class="block">
           <h2>{{ session?.character?.name }}</h2>
           <p class="hint">坐标由服务端在地图空地随机选取，客户端不传位置。</p>
-          <button type="button" :disabled="busy" @click="submitFoundCity">建城</button>
+          <button type="button" :disabled="busy" @click="submitFoundCity">立城开局</button>
         </section>
+      </div>
+    </GateScene>
 
-        <template v-else>
+    <section v-else class="card">
+      <p v-if="error" class="error toast">{{ error }}</p>
+      <p v-if="notice" class="hint toast">{{ notice }}</p>
+
+      <div class="play">
           <section v-if="tab === 'city'" class="block city-play">
             <div class="zone-tabs">
               <button type="button" :class="{ active: cityZone === 'inner' }" @click="setCityZone('inner')">城内</button>
@@ -1301,88 +1316,50 @@ async function submitLogout(): Promise<void> {
               :now-ms="syncedNow"
               :wall-defense="walls.wallDefense"
               :trap-bonus="walls.trapBonus"
+              :threatened="incomingMarches.length > 0"
               @upgrade="submitWallUpgrade"
               @pick="gameAudio.play('click')"
             />
           </section>
 
-          <section v-if="tab === 'army' && army" class="block">
-            <h2>军队</h2>
-            <div class="troop-row">
-              <div class="troop-card">
-                <img :src="troopPortrait('infantry')" alt="步兵" />
-                <strong>步兵</strong>
-                <b>{{ army.troops.infantry }}</b>
+          <section v-if="tab === 'army' && army" class="block city-play">
+            <BarracksScene
+              :army="army"
+              :busy="busy"
+              :now-ms="syncedNow"
+              v-model:troop-type="recruitType"
+              v-model:count="recruitCount"
+              @recruit="submitRecruit"
+              @pick="gameAudio.play('click')"
+            />
+            <div class="war-table">
+              <h3>出征 / 侦察</h3>
+              <p :class="selectedProtected ? 'lose' : 'hint'">
+                {{ selected ? `目标：${selected.label}` : "在地图点选据点或其他玩家城" }}
+              </p>
+              <p v-if="selectedSelf" class="hint">不能侦察或进攻自己的城</p>
+              <p v-else-if="selectedProtected" class="lose">保护中的城不能进攻，但仍可派斥候查看</p>
+              <p class="hint">驻军 {{ troopLine(army.troops) }}。斥候固定派出 1 名步兵，半程到达，不战斗。</p>
+              <p v-if="marchInvalid && selected" class="hint">{{ marchInvalid }}</p>
+              <p v-if="scoutInvalid && selected" class="hint">{{ scoutInvalid }}</p>
+              <div class="form inline">
+                <label>步 <input v-model.number="marchInf" type="number" min="0" :max="army.troops.infantry" /></label>
+                <label>弓 <input v-model.number="marchArc" type="number" min="0" :max="army.troops.archer" /></label>
+                <label>骑 <input v-model.number="marchCav" type="number" min="0" :max="army.troops.cavalry" /></label>
+                <button type="button" :disabled="busy || !selected || selectedSelf || selectedProtected || Boolean(marchInvalid)" @click="submitMarch">出征</button>
+                <button type="button" :disabled="busy || !selected || Boolean(scoutInvalid)" @click="submitScout">侦察</button>
               </div>
-              <div class="troop-card">
-                <img :src="troopPortrait('archer')" alt="弓兵" />
-                <strong>弓兵</strong>
-                <b>{{ army.troops.archer }}</b>
-              </div>
-              <div class="troop-card">
-                <img :src="troopPortrait('cavalry')" alt="骑兵" />
-                <strong>骑兵</strong>
-                <b>{{ army.troops.cavalry }}</b>
-              </div>
+              <ul class="buildings">
+                <li v-for="item in army.marches" :key="item.id">
+                  <div>
+                    <strong>{{ marchKindLabel(item) }} · {{ marchTargetName(item) }}</strong>
+                    <span class="meta">{{ item.fromX }},{{ item.fromY }} → {{ item.toX }},{{ item.toY }}</span>
+                    <span class="hint">到达 {{ remainText(item.arriveAt) }}</span>
+                    <p v-if="troopLine(item.troops)" class="hint">{{ troopLine(item.troops) }}</p>
+                  </div>
+                </li>
+              </ul>
             </div>
-            <p class="hint">
-              带兵上限 {{ army.troopCap }} · 兵营 {{ army.barracksLevel }} 级 · 城防 {{ army.wallDefense }}
-              <template v-if="army.troopPowerBonusPercent"> · 兵力战力+{{ army.troopPowerBonusPercent }}%</template>
-            </p>
-            <div class="form inline">
-              <label>
-                兵种
-                <select v-model="recruitType">
-                  <option value="infantry">步兵</option>
-                  <option value="archer">弓兵</option>
-                  <option value="cavalry">骑兵</option>
-                </select>
-              </label>
-              <label>
-                数量
-                <input v-model.number="recruitCount" type="number" min="1" max="100" />
-              </label>
-              <button type="button" :disabled="busy || Boolean(army.recruitQueue)" @click="submitRecruit">征兵</button>
-            </div>
-            <div v-if="selectedTroop" class="cost-row">
-              <span v-for="key in resourceKeys" :key="key" class="cost-chip">
-                <img :src="resourceArt[key]" :alt="resourceLabel[key]" />
-                {{ selectedTroop.unitCost[key] * Math.max(0, Number(recruitCount) || 0) }}
-              </span>
-              <span class="cost-chip time">兵营 ≥ {{ selectedTroop.requireBarracksLevel }}</span>
-              <span v-if="army.recruitDiscountPercent" class="hint">征兵减免 {{ army.recruitDiscountPercent }}%</span>
-            </div>
-            <p v-if="army.recruitQueue" class="hint">
-              征兵中 {{ troopLabel[army.recruitQueue.troopType] ?? army.recruitQueue.troopType }}
-              × {{ army.recruitQueue.count }}，剩余 {{ remainText(army.recruitQueue.finishAt) }}
-            </p>
-            <p v-else class="hint">步兵需兵营 1 级，弓兵 2 级，骑兵 3 级。下达后扣资源，到点入帐。</p>
-            <h3>出征 / 侦察</h3>
-            <p :class="selectedProtected ? 'lose' : 'hint'">
-              {{ selected ? `目标：${selected.label}` : "在地图点选据点或其他玩家城" }}
-            </p>
-            <p v-if="selectedSelf" class="hint">不能侦察或进攻自己的城</p>
-            <p v-else-if="selectedProtected" class="lose">保护中的城不能进攻，但仍可派斥候查看</p>
-            <p class="hint">驻军 {{ troopLine(army.troops) }}。斥候固定派出 1 名步兵，半程到达，不战斗。</p>
-            <p v-if="marchInvalid && selected" class="hint">{{ marchInvalid }}</p>
-            <p v-if="scoutInvalid && selected" class="hint">{{ scoutInvalid }}</p>
-            <div class="form inline">
-              <label>步 <input v-model.number="marchInf" type="number" min="0" :max="army.troops.infantry" /></label>
-              <label>弓 <input v-model.number="marchArc" type="number" min="0" :max="army.troops.archer" /></label>
-              <label>骑 <input v-model.number="marchCav" type="number" min="0" :max="army.troops.cavalry" /></label>
-              <button type="button" :disabled="busy || !selected || selectedSelf || selectedProtected || Boolean(marchInvalid)" @click="submitMarch">出征</button>
-              <button type="button" :disabled="busy || !selected || Boolean(scoutInvalid)" @click="submitScout">侦察</button>
-            </div>
-            <ul class="buildings">
-              <li v-for="item in army.marches" :key="item.id">
-                <div>
-                  <strong>{{ marchKindLabel(item) }} · {{ marchTargetName(item) }}</strong>
-                  <span class="meta">{{ item.fromX }},{{ item.fromY }} → {{ item.toX }},{{ item.toY }}</span>
-                  <span class="hint">到达 {{ remainText(item.arriveAt) }}</span>
-                  <p v-if="troopLine(item.troops)" class="hint">{{ troopLine(item.troops) }}</p>
-                </div>
-              </li>
-            </ul>
           </section>
 
           <section v-if="tab === 'daily' && daily" class="block">
@@ -1508,47 +1485,17 @@ async function submitLogout(): Promise<void> {
             </ul>
           </section>
 
-          <section v-if="tab === 'shop' && shop" class="block">
-            <h2>商城</h2>
-            <p class="hint">用元宝购买道具。加速与丰收令持续 5 小时，重复使用时间累加。元宝从出征掠夺中按概率获得，胜多负少。</p>
-            <p v-if="shop.buffs.length" class="hint">
-              生效中：
-              <span v-for="buff in shop.buffs" :key="buff.type">
-                {{ buff.name }} {{ remainText(buff.expireAt) }}（+{{ buff.speedPercent }}%）
-              </span>
-            </p>
-            <p v-else class="hint">当前没有生效中的时效道具。</p>
-            <div class="form inline">
-              <label>目标 X <input v-model.number="relocateX" type="number" min="0" /></label>
-              <label>目标 Y <input v-model.number="relocateY" type="number" min="0" /></label>
-              <span class="hint">仅高级迁城令使用；当前 ({{ shop.x }}, {{ shop.y }})</span>
-            </div>
-            <ul class="buildings">
-              <li v-for="item in shop.catalog" :key="item.type">
-                <div>
-                  <strong>{{ item.name }}</strong>
-                  <span class="meta">{{ item.price }} 元宝 · 拥有 {{ item.owned }}</span>
-                  <p class="hint">{{ item.description }}</p>
-                </div>
-                <div class="actions">
-                  <input
-                    v-model.number="shopBuyCount[item.type]"
-                    type="number"
-                    min="1"
-                    max="99"
-                    placeholder="1"
-                  />
-                  <button
-                    type="button"
-                    :disabled="busy || shop.yuanbao < item.price * shopCount(item.type)"
-                    @click="submitBuy(item)"
-                  >
-                    购买
-                  </button>
-                  <button type="button" :disabled="busy || item.owned < 1" @click="submitUse(item)">使用</button>
-                </div>
-              </li>
-            </ul>
+          <section v-if="tab === 'shop' && shop" class="block city-play">
+            <ShopScene
+              :shop="shop"
+              :busy="busy"
+              :now-ms="syncedNow"
+              v-model:relocate-x="relocateX"
+              v-model:relocate-y="relocateY"
+              @buy="submitBuy"
+              @use="submitUse"
+              @pick="gameAudio.play('click')"
+            />
           </section>
 
           <section v-if="tab === 'reports'" class="block">
@@ -1707,7 +1654,6 @@ async function submitLogout(): Promise<void> {
               </ul>
             </template>
           </section>
-        </template>
       </div>
     </section>
   </main>

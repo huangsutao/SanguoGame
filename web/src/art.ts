@@ -48,3 +48,17 @@ export function buildingPortrait(type: string): string {
 export function troopPortrait(type: string): string {
   return troopArt[type] ?? "/art/infantry.jpg";
 }
+
+export const shopArt: Record<string, string> = {
+  speedBuild: "/art/house.jpg",
+  speedUpgrade: "/art/wall.jpg",
+  speedTech: "/art/academy.jpg",
+  speedRecruit: "/art/barracks.jpg",
+  resourceBoost: "/art/farm.jpg",
+  relocateRandom: "/art/gate.jpg",
+  relocateTarget: "/art/palace.jpg"
+};
+
+export function shopPortrait(type: string): string {
+  return shopArt[type] ?? "/art/market.jpg";
+}

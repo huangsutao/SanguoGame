@@ -11,6 +11,8 @@ namespace SanguoGame.Server.Services;
 
 public sealed class AuthService
 {
+    public const int RefreshReuseGraceSeconds = 15;
+
     private const string ReservedAiPrefix = "ai_";
 
     private readonly IFreeSql _orm;
@@ -107,12 +109,21 @@ public sealed class AuthService
 
             if (stored.RevokedAt is not null)
             {
-                await _orm.Update<RefreshTokenEntity>()
-                    .WithTransaction(transaction)
-                    .Where(t => t.AccountId == stored.AccountId && t.RevokedAt == null)
-                    .Set(t => t.RevokedAt, now)
-                    .ExecuteAffrowsAsync(cancellationToken);
-                await transaction.CommitAsync(cancellationToken);
+                var reusedAfterGrace = now - stored.RevokedAt.Value > TimeSpan.FromSeconds(RefreshReuseGraceSeconds);
+                if (reusedAfterGrace)
+                {
+                    await _orm.Update<RefreshTokenEntity>()
+                        .WithTransaction(transaction)
+                        .Where(t => t.AccountId == stored.AccountId && t.RevokedAt == null)
+                        .Set(t => t.RevokedAt, now)
+                        .ExecuteAffrowsAsync(cancellationToken);
+                    await transaction.CommitAsync(cancellationToken);
+                }
+                else
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                }
+
                 throw new BizException(ErrorCodes.Unauthorized, "刷新令牌无效或已过期");
             }
 

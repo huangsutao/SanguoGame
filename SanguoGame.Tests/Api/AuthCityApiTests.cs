@@ -107,6 +107,30 @@ public sealed class AuthCityApiTests
         Assert.Equal(0, refreshed.Code);
         var (_, reuse) = await api.Post<TokenResponse>("/api/auth/refresh", new { refreshToken = tokens.RefreshToken });
         Assert.Equal(ErrorCodes.Unauthorized, reuse.Code);
+        var (_, stillValid) = await api.Post<TokenResponse>(
+            "/api/auth/refresh",
+            new { refreshToken = refreshed.Data!.RefreshToken });
+        Assert.Equal(0, stillValid.Code);
+        Assert.False(string.IsNullOrWhiteSpace(stillValid.Data?.AccessToken));
+    }
+
+    [SkippableFact]
+    public async Task Refresh_ConcurrentReuse_DoesNotRevokeNewSession()
+    {
+        SkipIfUnavailable();
+        var api = new ApiClient(_factory.CreateJsonClient());
+        var tokens = await api.RegisterAsync("u" + Guid.NewGuid().ToString("N")[..10]);
+        var first = api.Post<TokenResponse>("/api/auth/refresh", new { refreshToken = tokens.RefreshToken });
+        var second = api.Post<TokenResponse>("/api/auth/refresh", new { refreshToken = tokens.RefreshToken });
+        await Task.WhenAll(first, second);
+
+        var bodies = new[] { first.Result.Body, second.Result.Body };
+        Assert.Contains(bodies, body => body.Code == 0);
+        var winner = bodies.First(body => body.Code == 0);
+        var (_, again) = await api.Post<TokenResponse>(
+            "/api/auth/refresh",
+            new { refreshToken = winner.Data!.RefreshToken });
+        Assert.Equal(0, again.Code);
     }
 
     private void SkipIfUnavailable()

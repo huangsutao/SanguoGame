@@ -9,7 +9,7 @@ namespace SanguoGame.Server.Services;
 
 public sealed class SeedService
 {
-    private const long WorldSeedLockId = 87342016;
+    private const long WorldSeedLockId = WorldOccupancy.PlacementLockId;
 
     private readonly IFreeSql _orm;
     private readonly WorldMapOptions _map;
@@ -71,16 +71,25 @@ public sealed class SeedService
 
             try
             {
-                await _orm.Insert(new OutpostEntity
+                var placed = await WorldOccupancy.TryInsertOccupiedAsync(
+                    _orm,
+                    cell.Value.X,
+                    cell.Value.Y,
+                    MapCellKinds.Outpost,
+                    transaction => _orm.Insert(new OutpostEntity
+                    {
+                        Type = def.Type,
+                        Name = $"{def.Name}·{cell.Value.X},{cell.Value.Y}",
+                        X = cell.Value.X,
+                        Y = cell.Value.Y,
+                        Garrison = def.Garrison,
+                        Kind = OutpostKind.Permanent
+                    }).WithTransaction(transaction).ExecuteIdentityAsync(cancellationToken),
+                    cancellationToken);
+                if (placed is not null)
                 {
-                    Type = def.Type,
-                    Name = $"{def.Name}·{cell.Value.X},{cell.Value.Y}",
-                    X = cell.Value.X,
-                    Y = cell.Value.Y,
-                    Garrison = def.Garrison,
-                    Kind = OutpostKind.Permanent
-                }).ExecuteAffrowsAsync(cancellationToken);
-                existing++;
+                    existing++;
+                }
             }
             catch (Exception ex) when (DbErrors.IsUniqueViolation(ex))
             {
@@ -110,13 +119,22 @@ public sealed class SeedService
 
             try
             {
-                await _orm.Insert(new MarketEntity
+                var placed = await WorldOccupancy.TryInsertOccupiedAsync(
+                    _orm,
+                    cell.Value.X,
+                    cell.Value.Y,
+                    MapCellKinds.Market,
+                    transaction => _orm.Insert(new MarketEntity
+                    {
+                        Name = $"市集·{cell.Value.X},{cell.Value.Y}",
+                        X = cell.Value.X,
+                        Y = cell.Value.Y
+                    }).WithTransaction(transaction).ExecuteIdentityAsync(cancellationToken),
+                    cancellationToken);
+                if (placed is not null)
                 {
-                    Name = $"市集·{cell.Value.X},{cell.Value.Y}",
-                    X = cell.Value.X,
-                    Y = cell.Value.Y
-                }).ExecuteAffrowsAsync(cancellationToken);
-                existing++;
+                    existing++;
+                }
             }
             catch (Exception ex) when (DbErrors.IsUniqueViolation(ex))
             {

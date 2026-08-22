@@ -40,7 +40,7 @@ export function clearTokens(): void {
 export function isAccessTokenExpiringSoon(skewMs = 30_000): boolean {
   const expires = getAccessExpiresAt();
   if (expires === null) {
-    return false;
+    return Boolean(getAccessToken());
   }
   return expires - Date.now() <= skewMs;
 }

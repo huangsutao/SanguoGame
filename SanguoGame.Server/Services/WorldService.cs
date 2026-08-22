@@ -11,7 +11,7 @@ namespace SanguoGame.Server.Services;
 
 public sealed class WorldService
 {
-    private const long RoamingLockId = 87342017;
+    private const long RoamingLockId = WorldOccupancy.PlacementLockId;
 
     private readonly IFreeSql _orm;
     private readonly WorldMapOptions _map;
@@ -167,17 +167,26 @@ public sealed class WorldService
 
                 try
                 {
-                    await _orm.Insert(new OutpostEntity
+                    var placed = await WorldOccupancy.TryInsertOccupiedAsync(
+                        _orm,
+                        cell.Value.X,
+                        cell.Value.Y,
+                        MapCellKinds.Outpost,
+                        transaction => _orm.Insert(new OutpostEntity
+                        {
+                            Type = def.Type,
+                            Name = $"{def.Name}·{cell.Value.X},{cell.Value.Y}",
+                            X = cell.Value.X,
+                            Y = cell.Value.Y,
+                            Garrison = def.Garrison,
+                            Kind = OutpostKind.Roaming,
+                            ExpiresAt = now.AddSeconds(lifetime)
+                        }).WithTransaction(transaction).ExecuteIdentityAsync(cancellationToken),
+                        cancellationToken);
+                    if (placed is not null)
                     {
-                        Type = def.Type,
-                        Name = $"{def.Name}·{cell.Value.X},{cell.Value.Y}",
-                        X = cell.Value.X,
-                        Y = cell.Value.Y,
-                        Garrison = def.Garrison,
-                        Kind = OutpostKind.Roaming,
-                        ExpiresAt = now.AddSeconds(lifetime)
-                    }).ExecuteAffrowsAsync(cancellationToken);
-                    existing++;
+                        existing++;
+                    }
                 }
                 catch (Exception ex) when (DbErrors.IsUniqueViolation(ex))
                 {
@@ -190,8 +199,21 @@ public sealed class WorldService
         }
     }
 
-    private async Task PurgeExpiredRoamingAsync(DateTime now, CancellationToken cancellationToken) =>
-        await _orm.Delete<OutpostEntity>()
+    private async Task PurgeExpiredRoamingAsync(DateTime now, CancellationToken cancellationToken)
+    {
+        var expired = await _orm.Select<OutpostEntity>()
             .Where(o => o.Kind == OutpostKind.Roaming && o.ExpiresAt != null && o.ExpiresAt <= now)
-            .ExecuteAffrowsAsync(cancellationToken);
+            .ToListAsync(cancellationToken);
+        if (expired.Count == 0)
+        {
+            return;
+        }
+
+        var ids = expired.Select(o => o.Id).ToArray();
+        await _orm.Delete<OutpostEntity>().Where(o => ids.Contains(o.Id)).ExecuteAffrowsAsync(cancellationToken);
+        foreach (var outpost in expired)
+        {
+            await WorldOccupancy.ReleaseAsync(_orm, outpost.X, outpost.Y, cancellationToken);
+        }
+    }
 }

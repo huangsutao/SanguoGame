@@ -495,11 +495,20 @@ public sealed class AllianceService
             throw new BizException(ErrorCodes.AlreadyInAlliance, "已加入联盟");
         }
 
-        await EnsureCapacityAsync(allianceId, cancellationToken);
         try
         {
             await InTransactionAsync(async transaction =>
             {
+                await EnsureCapacityAsync(allianceId, cancellationToken, transaction);
+                var already = await _orm.Select<AllianceMemberEntity>()
+                    .WithTransaction(transaction)
+                    .Where(m => m.CharacterId == character.Id)
+                    .AnyAsync(cancellationToken);
+                if (already)
+                {
+                    throw new BizException(ErrorCodes.AlreadyInAlliance, "已加入联盟");
+                }
+
                 await _orm.Insert(new AllianceMemberEntity
                 {
                     AllianceId = allianceId,
@@ -580,11 +589,25 @@ public sealed class AllianceService
         }
     }
 
-    private async Task EnsureCapacityAsync(long allianceId, CancellationToken cancellationToken)
+    private async Task EnsureCapacityAsync(
+        long allianceId,
+        CancellationToken cancellationToken,
+        DbTransaction? transaction = null)
     {
-        var count = (int)await _orm.Select<AllianceMemberEntity>()
-            .Where(m => m.AllianceId == allianceId)
-            .CountAsync(cancellationToken);
+        var alliance = _orm.Select<AllianceEntity>().Where(a => a.Id == allianceId);
+        var members = _orm.Select<AllianceMemberEntity>().Where(m => m.AllianceId == allianceId);
+        if (transaction is not null)
+        {
+            alliance = alliance.WithTransaction(transaction).ForUpdate();
+            members = members.WithTransaction(transaction);
+        }
+
+        if (await alliance.FirstAsync(cancellationToken) is null)
+        {
+            throw new BizException(ErrorCodes.NotFound, "联盟不存在");
+        }
+
+        var count = (int)await members.CountAsync(cancellationToken);
         if (count >= AllianceRules.MaxMembers)
         {
             throw new BizException(ErrorCodes.AllianceFull, "联盟人数已满");

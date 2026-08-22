@@ -60,7 +60,25 @@ public sealed class CityService
 
             try
             {
-                city.Id = await _orm.Insert(city).ExecuteIdentityAsync(cancellationToken);
+                var placed = await WorldOccupancy.TryInsertOccupiedAsync(
+                    _orm,
+                    cell.Value.X,
+                    cell.Value.Y,
+                    MapCellKinds.City,
+                    async transaction =>
+                    {
+                        city.Id = await _orm.Insert(city)
+                            .WithTransaction(transaction)
+                            .ExecuteIdentityAsync(cancellationToken);
+                        return city.Id;
+                    },
+                    cancellationToken);
+                if (placed is null)
+                {
+                    continue;
+                }
+
+                city.Id = placed.Value;
                 return ToResponse(city);
             }
             catch (Exception ex) when (DbErrors.IsUniqueViolation(ex))

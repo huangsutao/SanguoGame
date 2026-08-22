@@ -314,9 +314,15 @@ const mailTypeLabel: Record<string, string> = {
   scout: "斥候"
 };
 
+type HubEnvelope = { code?: number; message?: string; data?: unknown };
+
 let hub: HubConnection | null = null;
 let tick: number | undefined;
 let lastWorldRefresh = 0;
+let worldGen = 0;
+let cityGen = 0;
+let allGen = 0;
+let worldSyncFails = 0;
 
 function unlockAudio(): void {
   gameAudio.unlock();
@@ -416,7 +422,11 @@ function protectionText(until?: string): string {
 }
 
 async function loadCity(): Promise<void> {
+  const gen = ++cityGen;
   const [inner, outer, wall] = await Promise.all([fetchBuildings(), fetchFields(), fetchWalls()]);
+  if (gen !== cityGen) {
+    return;
+  }
   overview.value = inner;
   fields.value = outer;
   walls.value = wall;
@@ -425,11 +435,18 @@ async function loadCity(): Promise<void> {
 
 async function loadArmy(): Promise<void> {
   army.value = await fetchArmy();
+  markClock(army.value.serverTime);
 }
 
 async function loadWorld(): Promise<void> {
-  world.value = await fetchWorld();
-  markClock(world.value.serverTime);
+  const gen = ++worldGen;
+  const data = await fetchWorld();
+  if (gen !== worldGen) {
+    return;
+  }
+  world.value = data;
+  markClock(data.serverTime);
+  worldSyncFails = 0;
 }
 
 async function loadMarkets(): Promise<void> {
@@ -508,6 +525,7 @@ async function loadAlliance(): Promise<void> {
 }
 
 async function loadAll(): Promise<void> {
+  const gen = ++allGen;
   await Promise.all([
     loadCity(),
     loadArmy(),
@@ -520,42 +538,71 @@ async function loadAll(): Promise<void> {
     loadDaily(),
     loadShop()
   ]);
+  if (gen !== allGen) {
+    return;
+  }
+}
+
+function acceptHub(payload?: HubEnvelope): boolean {
+  if (payload && typeof payload.code === "number" && payload.code !== 0) {
+    error.value = payload.message || "推送失败";
+    return false;
+  }
+  return true;
 }
 
 async function connectHub(): Promise<void> {
   await disconnectHub();
   hub = createGameHub();
-  hub.on("BuildComplete", () => {
+  hub.on("BuildComplete", (payload?: HubEnvelope) => {
+    if (!acceptHub(payload)) {
+      return;
+    }
     void loadCity();
     error.value = "";
     notice.value = "建造完成";
     gameAudio.play("complete");
   });
-  hub.on("MarchArrived", (payload?: { data?: unknown }) => {
+  hub.on("MarchArrived", (payload?: HubEnvelope) => {
+    if (!acceptHub(payload)) {
+      return;
+    }
     void loadAll();
     error.value = "";
     notice.value = payload?.data ? "部队已到达" : "斥候已回报";
     gameAudio.play(payload?.data ? "attack" : "scout");
   });
-  hub.on("CityAttacked", () => {
+  hub.on("CityAttacked", (payload?: HubEnvelope) => {
+    if (!acceptHub(payload)) {
+      return;
+    }
     void loadAll();
     error.value = "";
     notice.value = "本城遭到攻击";
     gameAudio.play("attack");
   });
-  hub.on("TransportArrived", () => {
+  hub.on("TransportArrived", (payload?: HubEnvelope) => {
+    if (!acceptHub(payload)) {
+      return;
+    }
     void loadAll();
     error.value = "";
     notice.value = "运输已到达";
     gameAudio.play("transport");
   });
-  hub.on("ResourceReceived", () => {
+  hub.on("ResourceReceived", (payload?: HubEnvelope) => {
+    if (!acceptHub(payload)) {
+      return;
+    }
     void loadAll();
     error.value = "";
     notice.value = "收到同盟资源";
     gameAudio.play("collect");
   });
-  hub.on("RecruitComplete", () => {
+  hub.on("RecruitComplete", (payload?: HubEnvelope) => {
+    if (!acceptHub(payload)) {
+      return;
+    }
     void loadArmy();
     error.value = "";
     notice.value = "征兵完成";
@@ -609,7 +656,12 @@ onMounted(async () => {
     const gap = tab.value === "map" ? 5000 : 12000;
     if (hasCity.value && Date.now() - lastWorldRefresh >= gap) {
       lastWorldRefresh = Date.now();
-      void loadWorld().catch(() => undefined);
+      void loadWorld().catch(() => {
+        worldSyncFails += 1;
+        if (worldSyncFails >= 3) {
+          error.value = "地图同步失败";
+        }
+      });
     }
   }, 1000);
 
@@ -1517,6 +1569,8 @@ async function submitLogout(): Promise<void> {
               :shop="shop"
               :busy="busy"
               :now-ms="syncedNow"
+              :map-width="world?.width"
+              :map-height="world?.height"
               v-model:relocate-x="relocateX"
               v-model:relocate-y="relocateY"
               @buy="submitBuy"

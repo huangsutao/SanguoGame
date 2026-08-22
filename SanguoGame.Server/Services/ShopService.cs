@@ -207,11 +207,19 @@ public sealed class ShopService
         {
             try
             {
-                await CityRowLock.RunAsync(_orm, city.Id, async (transaction, locked, ct) =>
+                var moved = await CityRowLock.RunAsync(_orm, city.Id, async (transaction, locked, ct) =>
                 {
                     await EnsureCanRelocateAsync(transaction, locked.Id, ct);
                     var cell = await ResolveRelocateCellAsync(transaction, locked, def, x, y, ct);
+                    if (!await WorldOccupancy.TryClaimAsync(
+                            _orm, cell.X, cell.Y, MapCellKinds.City, locked.Id, ct, transaction))
+                    {
+                        return false;
+                    }
+
                     await ConsumeItemAsync(transaction, locked.Id, def.Type, 1, ct);
+                    var fromX = locked.X;
+                    var fromY = locked.Y;
                     locked.X = cell.X;
                     locked.Y = cell.Y;
                     locked.ProtectionUntil = DateTime.UtcNow.AddSeconds(_map.ProtectionSeconds);
@@ -220,12 +228,23 @@ public sealed class ShopService
                         .SetSource(locked)
                         .UpdateColumns(c => new { c.X, c.Y, c.ProtectionUntil })
                         .ExecuteAffrowsAsync(ct);
+                    await WorldOccupancy.ReleaseAsync(_orm, fromX, fromY, ct, transaction);
                     city.X = locked.X;
                     city.Y = locked.Y;
                     city.ProtectionUntil = locked.ProtectionUntil;
                     city.Yuanbao = locked.Yuanbao;
-                    return 0;
+                    return true;
                 }, cancellationToken);
+                if (!moved)
+                {
+                    if (def.Type == ItemCatalog.RelocateRandom)
+                    {
+                        continue;
+                    }
+
+                    throw new BizException(ErrorCodes.InvalidRelocateTarget, "目标格已被占用");
+                }
+
                 return await BuildOverviewAsync(city, cancellationToken);
             }
             catch (Exception ex) when (DbErrors.IsUniqueViolation(ex) && def.Type == ItemCatalog.RelocateRandom)

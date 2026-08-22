@@ -70,7 +70,8 @@ import type {
   TroopDto,
   DailyOverviewDto,
   ShopOverviewDto,
-  ShopCatalogItemDto
+  ShopCatalogItemDto,
+  BuildingQueueDto
 } from "./api/types";
 import { clearTokens, getAccessToken, getRefreshToken, saveTokens, setUnauthorizedHandler } from "./session";
 import type { HubConnection } from "@microsoft/signalr";
@@ -82,7 +83,7 @@ import ShopScene from "./ShopScene.vue";
 import BarracksScene from "./BarracksScene.vue";
 import { resourceArt, resourceKeys } from "./art";
 import { gameAudio } from "./audio";
-import { calibratedNow, incomingOnCity, remainText as formatRemain, resourceLabel, troopLabel } from "./format";
+import { calibratedNow, incomingOnCity, remainText as formatRemain, resourceLabel, slotLine, troopLabel } from "./format";
 
 const loading = ref(true);
 const busy = ref(false);
@@ -143,7 +144,24 @@ const characterName = ref("");
 const loggedIn = computed(() => session.value !== null);
 const hasCharacter = computed(() => Boolean(session.value?.character));
 const hasCity = computed(() => Boolean(session.value?.city));
-const queue = computed(() => overview.value?.queue ?? fields.value?.queue ?? walls.value?.queue);
+const buildQueues = computed(() => {
+  const map = new Map<string, BuildingQueueDto>();
+  for (const item of [
+    ...(overview.value?.queues ?? (overview.value?.queue ? [overview.value.queue] : [])),
+    ...(fields.value?.queues ?? (fields.value?.queue ? [fields.value.queue] : [])),
+    ...(walls.value?.queues ?? (walls.value?.queue ? [walls.value.queue] : []))
+  ]) {
+    map.set(item.buildingType, item);
+  }
+  return [...map.values()];
+});
+const recruitQueues = computed(() =>
+  army.value?.recruitQueues?.length
+    ? army.value.recruitQueues
+    : army.value?.recruitQueue
+      ? [army.value.recruitQueue]
+      : []
+);
 const hudResources = computed(
   () =>
     overview.value?.resources ??
@@ -779,6 +797,8 @@ async function submitCollect(type?: string): Promise<void> {
       resources: result.data.resources,
       resourceCap: result.data.resourceCap,
       queue: fields.value?.queue,
+      queues: fields.value?.queues,
+      fieldSlots: fields.value?.fieldSlots,
       fields: result.data.fields
     };
     markClock(result.data.serverTime);
@@ -822,8 +842,8 @@ async function submitRecruit(): Promise<void> {
     army.value = await recruit(recruitType.value, recruitCount.value);
     overview.value = await fetchBuildings();
     await loadDaily();
-    notice.value = army.value.recruitQueue
-      ? `已下达征兵 ${recruitCount.value} 名${troopLabel[recruitType.value] ?? "士兵"}，剩余 ${remainText(army.value.recruitQueue.finishAt)}`
+    notice.value = recruitQueues.value.length
+      ? `已下达征兵 ${recruitCount.value} 名${troopLabel[recruitType.value] ?? "士兵"}，队列 ${army.value.recruitSlots?.used ?? recruitQueues.value.length}/${army.value.recruitSlots?.limit ?? 5}`
       : `已征${recruitCount.value}名${troopLabel[recruitType.value] ?? "士兵"}`;
     gameAudio.play("recruit");
   } catch (err) {
@@ -1200,13 +1220,17 @@ async function submitLogout(): Promise<void> {
         <button type="button" :class="{ active: tab === 'ranks' }" @click="tab = 'ranks'">排行</button>
         <button type="button" :class="{ active: tab === 'alliance' }" @click="tab = 'alliance'">联盟</button>
       </div>
-      <p v-if="queue" class="queue-banner">
-        建造中：{{ queueName(queue.buildingType) }} → {{ queue.targetLevel }} 级，剩余
-        {{ remainText(queue.finishAt) }}
+      <p v-if="buildQueues.length" class="queue-banner">
+        建造中 {{ buildQueues.length }} 项：
+        <span v-for="item in buildQueues" :key="item.buildingType">
+          {{ queueName(item.buildingType) }} → {{ item.targetLevel }} 级 {{ remainText(item.finishAt) }}
+        </span>
       </p>
-      <p v-if="army?.recruitQueue" class="queue-banner">
-        征兵中：{{ troopLabel[army.recruitQueue.troopType] ?? army.recruitQueue.troopType }}
-        × {{ army.recruitQueue.count }}，剩余 {{ remainText(army.recruitQueue.finishAt) }}
+      <p v-if="recruitQueues.length" class="queue-banner">
+        征兵中 {{ recruitQueues.length }} 项：
+        <span v-for="(item, index) in recruitQueues" :key="`${item.troopType}-${index}`">
+          {{ troopLabel[item.troopType] ?? item.troopType }} × {{ item.count }} {{ remainText(item.finishAt) }}
+        </span>
       </p>
       <p v-if="incomingMarches.length" class="queue-banner incoming-banner">
         敌军逼近本城 {{ incomingMarches.length }} 路
@@ -1295,6 +1319,7 @@ async function submitLogout(): Promise<void> {
               :items="overview.buildings"
               :busy="busy"
               :now-ms="syncedNow"
+              :slot-line="[slotLine(overview.buildSlots, '建造'), slotLine(overview.techSlots, '科技')].filter(Boolean).join(' · ')"
               @upgrade="submitUpgrade"
               @pick="gameAudio.play('click')"
             />
@@ -1304,6 +1329,7 @@ async function submitLogout(): Promise<void> {
               :busy="busy"
               :now-ms="syncedNow"
               :server-time="fields.serverTime"
+              :slot-line="slotLine(fields.fieldSlots, '资源')"
               @upgrade="submitFieldUpgrade"
               @collect="submitCollect"
               @pick="gameAudio.play('click')"
@@ -1317,6 +1343,7 @@ async function submitLogout(): Promise<void> {
               :wall-defense="walls.wallDefense"
               :trap-bonus="walls.trapBonus"
               :threatened="incomingMarches.length > 0"
+              :slot-line="slotLine(walls.buildSlots, '建造')"
               @upgrade="submitWallUpgrade"
               @pick="gameAudio.play('click')"
             />

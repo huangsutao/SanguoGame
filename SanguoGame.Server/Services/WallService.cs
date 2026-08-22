@@ -56,21 +56,18 @@ public sealed class WallService
         var byType = rows.ToDictionary(b => b.Type, StringComparer.OrdinalIgnoreCase);
         var palaceLevel = byType.TryGetValue("palace", out var palace) ? palace.Level : 0;
         var warehouseLevel = byType.TryGetValue("warehouse", out var warehouse) ? warehouse.Level : 0;
-        var queueRow = rows.FirstOrDefault(b => b.Status == BuildingStatus.Upgrading);
+        var wallQueues = QueueSlots.OfKind(rows, QueueKind.Build)
+            .Where(q => WallCatalog.IsWall(q.BuildingType))
+            .ToList();
+        var buildUsed = QueueSlots.Used(rows, QueueKind.Build);
         var stock = CityStats.Stock(city);
-        var queueBusy = queueRow is not null;
+        var queueBusy = buildUsed >= QueueSlots.Limit(city, QueueKind.Build);
         var levels = WallCatalog.All.ToDictionary(
             def => def.Type,
             def => byType.TryGetValue(def.Type, out var entity) ? entity.Level : 0,
             StringComparer.OrdinalIgnoreCase);
         var trapLevel = levels.TryGetValue("trap", out var trap) ? trap : 0;
         var defenseHallLevel = byType.TryGetValue(TechBonuses.DefenseHall, out var hall) ? hall.Level : 0;
-
-        BuildingQueueDto? queue = null;
-        if (queueRow is { TargetLevel: int qLevel, FinishAt: { } qFinish })
-        {
-            queue = new BuildingQueueDto(queueRow.Type, qLevel, qFinish);
-        }
 
         var walls = WallCatalog.All.Select(def =>
         {
@@ -132,8 +129,10 @@ public sealed class WallService
             InnerBuildingCatalog.ResourceCap(warehouseLevel),
             WallCatalog.WallDefense(levels, defenseHallLevel),
             WallCatalog.TrapBonus(trapLevel, defenseHallLevel),
-            queue,
-            walls);
+            wallQueues.FirstOrDefault(),
+            walls,
+            wallQueues,
+            QueueSlots.State(city, QueueKind.Build, buildUsed));
     }
 
     private async Task<CityEntity> RequireCityAsync(long accountId, CancellationToken cancellationToken)

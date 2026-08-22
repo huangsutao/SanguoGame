@@ -187,6 +187,7 @@ public sealed class GameApiFactory : WebApplicationFactory<Program>, IAsyncLifet
                 sg_battle_report,
                 sg_march,
                 sg_transport,
+                sg_recruit,
                 sg_building,
                 sg_outpost,
                 sg_market,
@@ -214,9 +215,9 @@ public sealed class GameApiFactory : WebApplicationFactory<Program>, IAsyncLifet
     {
         await using var scope = Services.CreateAsyncScope();
         var orm = scope.ServiceProvider.GetRequiredService<IFreeSql>();
-        await orm.Update<CityEntity>()
-            .Where(c => c.RecruitFinishAt != null)
-            .Set(c => c.RecruitFinishAt, DateTime.UtcNow.AddMinutes(-1))
+        await orm.Update<RecruitEntity>()
+            .Where(r => r.FinishAt != default)
+            .Set(r => r.FinishAt, DateTime.UtcNow.AddMinutes(-1))
             .ExecuteAffrowsAsync();
         await scope.ServiceProvider.GetRequiredService<ArmyService>()
             .RecoverDueAsync(CancellationToken.None);

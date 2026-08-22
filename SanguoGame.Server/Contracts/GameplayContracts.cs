@@ -19,7 +19,9 @@ public sealed record WallsOverviewDto(
     int WallDefense,
     double TrapBonus,
     BuildingQueueDto? Queue,
-    IReadOnlyList<BuildingItemDto> Walls);
+    IReadOnlyList<BuildingItemDto> Walls,
+    IReadOnlyList<BuildingQueueDto>? Queues = null,
+    QueueStateDto? BuildSlots = null);
 
 public sealed class RecruitRequest
 {
@@ -85,7 +87,9 @@ public sealed record ArmyOverviewDto(
     IReadOnlyList<TroopTypeDto> TroopTypes,
     int TroopPowerBonusPercent = 0,
     int RecruitDiscountPercent = 0,
-    RecruitQueueDto? RecruitQueue = null);
+    RecruitQueueDto? RecruitQueue = null,
+    IReadOnlyList<RecruitQueueDto>? RecruitQueues = null,
+    QueueStateDto? RecruitSlots = null);
 
 public sealed record BattleReportDto(
     long Id,

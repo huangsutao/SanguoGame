@@ -121,6 +121,9 @@ public static class ErrorCodes
     /// <summary>本城征兵队列占用中。</summary>
     public const int RecruitQueueBusy = 40935;
 
+    /// <summary>该队列已用道具扩充到上限。</summary>
+    public const int QueueSlotMaxed = 40936;
+
     /// <summary>请求过于频繁。</summary>
     public const int TooManyRequests = 42900;
 

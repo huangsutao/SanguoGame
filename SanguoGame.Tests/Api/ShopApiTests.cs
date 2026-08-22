@@ -132,9 +132,6 @@ public sealed class ShopApiTests
         Assert.Equal(0, first.Data?.Troops.Infantry);
         var originalFinish = first.Data!.RecruitQueue!.FinishAt;
 
-        var (_, busy) = await api.Post<ArmyOverviewDto>("/api/army/recruit", new { troopType = "infantry", count = 1 });
-        Assert.Equal(ErrorCodes.RecruitQueueBusy, busy.Code);
-
         var (_, sped) = await api.Post<ShopOverviewDto>("/api/shop/use", new { itemType = "speedRecruit", count = 1 });
         Assert.Equal(0, sped.Code);
         var (_, army) = await api.Get<ArmyOverviewDto>("/api/army");

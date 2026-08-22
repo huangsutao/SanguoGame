@@ -173,21 +173,16 @@ public sealed class FieldService
         var palaceLevel = byType.TryGetValue("palace", out var palace) ? palace.Level : 0;
         var warehouseLevel = byType.TryGetValue("warehouse", out var warehouse) ? warehouse.Level : 0;
         var resourceHallLevel = byType.TryGetValue(TechBonuses.ResourceHall, out var hall) ? hall.Level : 0;
-        var queueRow = rows.FirstOrDefault(b => b.Status == BuildingStatus.Upgrading);
+        var fieldQueues = QueueSlots.OfKind(rows, QueueKind.Field);
+        var fieldUsed = fieldQueues.Count;
         var stock = ToAmount(city);
-        var queueBusy = queueRow is not null;
+        var queueBusy = fieldUsed >= QueueSlots.Limit(city, QueueKind.Field);
         var resourceCap = InnerBuildingCatalog.ResourceCap(warehouseLevel);
         var itemPercent = ItemCatalog.ResourceBoostOf(buffs, now);
         var itemExpire = ItemCatalog.ResourceBoostExpireAt(buffs, now);
         var upgradeSpeed = ItemCatalog.SpeedPercentOf("farm", buffs, now);
 
-        BuildingQueueDto? queue = null;
-        if (queueRow is { TargetLevel: int qLevel, FinishAt: { } qFinish })
-        {
-            queue = new BuildingQueueDto(queueRow.Type, qLevel, qFinish);
-        }
-
-        var fields = OuterFieldCatalog.All.Select(def =>
+        var items = OuterFieldCatalog.All.Select(def =>
         {
             byType.TryGetValue(def.Type, out var entity);
             var level = entity?.Level ?? 0;
@@ -254,8 +249,10 @@ public sealed class FieldService
             now,
             new ResourceDto(city.Grain, city.Wood, city.Iron, city.Copper),
             resourceCap,
-            queue,
-            fields);
+            fieldQueues.FirstOrDefault(),
+            items,
+            fieldQueues,
+            QueueSlots.State(city, QueueKind.Field, fieldUsed));
     }
 
     private async Task<CityEntity> RequireCityAsync(long accountId, CancellationToken cancellationToken)

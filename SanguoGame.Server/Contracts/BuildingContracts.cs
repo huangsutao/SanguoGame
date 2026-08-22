@@ -15,6 +15,14 @@ public sealed record BuildingCostDto(int Level, int DurationSeconds, ResourceDto
 
 public sealed record BuildingQueueDto(string BuildingType, int TargetLevel, DateTime FinishAt);
 
+public sealed record QueueStateDto(int Used, int Limit, int Extra);
+
+public sealed record CityQueueSlotsDto(
+    QueueStateDto Build,
+    QueueStateDto Field,
+    QueueStateDto Tech,
+    QueueStateDto Recruit);
+
 public sealed record BuildingItemDto(
     string Type,
     string Name,
@@ -35,7 +43,10 @@ public sealed record BuildingsOverviewDto(
     int ResourceCap,
     int PopulationCap,
     BuildingQueueDto? Queue,
-    IReadOnlyList<BuildingItemDto> Buildings);
+    IReadOnlyList<BuildingItemDto> Buildings,
+    IReadOnlyList<BuildingQueueDto>? Queues = null,
+    QueueStateDto? BuildSlots = null,
+    QueueStateDto? TechSlots = null);
 
 public sealed record BuildCompleteDto(
     long CityId,

@@ -56,7 +56,11 @@ export const shopArt: Record<string, string> = {
   speedRecruit: "/art/barracks.jpg",
   resourceBoost: "/art/farm.jpg",
   relocateRandom: "/art/gate.jpg",
-  relocateTarget: "/art/palace.jpg"
+  relocateTarget: "/art/palace.jpg",
+  queueBuild: "/art/house.jpg",
+  queueField: "/art/farm.jpg",
+  queueTech: "/art/academy.jpg",
+  queueRecruit: "/art/barracks.jpg"
 };
 
 export function shopPortrait(type: string): string {

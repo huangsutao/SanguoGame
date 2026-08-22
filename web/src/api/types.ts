@@ -75,6 +75,19 @@ export interface BuildingQueueDto {
   finishAt: string;
 }
 
+export interface QueueStateDto {
+  used: number;
+  limit: number;
+  extra: number;
+}
+
+export interface CityQueueSlotsDto {
+  build: QueueStateDto;
+  field: QueueStateDto;
+  tech: QueueStateDto;
+  recruit: QueueStateDto;
+}
+
 export interface BuildingItemDto {
   type: string;
   name: string;
@@ -96,6 +109,9 @@ export interface BuildingsOverviewDto {
   resourceCap: number;
   populationCap: number;
   queue?: BuildingQueueDto;
+  queues?: BuildingQueueDto[];
+  buildSlots?: QueueStateDto;
+  techSlots?: QueueStateDto;
   buildings: BuildingItemDto[];
 }
 
@@ -122,6 +138,8 @@ export interface FieldsOverviewDto {
   resources: ResourceDto;
   resourceCap: number;
   queue?: BuildingQueueDto;
+  queues?: BuildingQueueDto[];
+  fieldSlots?: QueueStateDto;
   fields: FieldItemDto[];
 }
 
@@ -142,6 +160,8 @@ export interface WallsOverviewDto {
   wallDefense: number;
   trapBonus: number;
   queue?: BuildingQueueDto;
+  queues?: BuildingQueueDto[];
+  buildSlots?: QueueStateDto;
   walls: BuildingItemDto[];
 }
 
@@ -189,6 +209,8 @@ export interface ArmyOverviewDto {
   troopPowerBonusPercent?: number;
   recruitDiscountPercent?: number;
   recruitQueue?: RecruitQueueDto;
+  recruitQueues?: RecruitQueueDto[];
+  recruitSlots?: QueueStateDto;
 }
 
 export interface RecruitQueueDto {
@@ -425,7 +447,7 @@ export interface RankingDto {
   items: RankingEntryDto[];
 }
 
-export type ItemKind = "buff" | "consumable";
+export type ItemKind = "buff" | "consumable" | "unlock";
 
 export interface ShopCatalogItemDto {
   type: string;
@@ -454,4 +476,5 @@ export interface ShopOverviewDto {
   protectionUntil?: string;
   catalog: ShopCatalogItemDto[];
   buffs: ShopBuffDto[];
+  slots?: CityQueueSlotsDto;
 }

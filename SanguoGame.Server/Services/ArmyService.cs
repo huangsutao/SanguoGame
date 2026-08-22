@@ -48,7 +48,7 @@ public sealed class ArmyService
         }
 
         var city = await RequireCityAsync(accountId, cancellationToken);
-        var finishAt = await CityRowLock.RunAsync(_orm, city.Id, async (transaction, locked, ct) =>
+        var planned = await CityRowLock.RunAsync(_orm, city.Id, async (transaction, locked, ct) =>
         {
             var rows = await _orm.Select<BuildingEntity>()
                 .WithTransaction(transaction)
@@ -60,15 +60,17 @@ public sealed class ArmyService
                 throw new BizException(ErrorCodes.BarracksRequired, $"需要兵营 {def.RequireBarracksLevel} 级");
             }
 
-            if (locked.RecruitFinishAt is not null && !string.IsNullOrWhiteSpace(locked.RecruitType))
+            var recruits = await LoadRecruitsAsync(transaction, locked.Id, ct);
+            if (recruits.Count >= QueueSlots.Limit(locked, QueueKind.Recruit))
             {
-                throw new BizException(ErrorCodes.RecruitQueueBusy, "本城正在征兵");
+                throw new BizException(ErrorCodes.RecruitQueueBusy, "征兵队列已满");
             }
 
             var marching = await MarchingTroopsAsync(transaction, locked.Id, ct);
             var stationed = CityStats.Troops(locked);
+            var queued = recruits.Sum(r => r.Count);
             var cap = InnerBuildingCatalog.TroopCap(barracksLevel);
-            if (stationed.Total + marching.Total + count > cap)
+            if (stationed.Total + marching.Total + queued + count > cap)
             {
                 throw new BizException(ErrorCodes.TroopCapExceeded, "超出带兵上限");
             }
@@ -89,9 +91,14 @@ public sealed class ArmyService
             var buffs = await CityBuffStore.LoadAsync(_orm, locked.Id, ct, transaction);
             var speed = ItemCatalog.RecruitSpeedPercent(buffs, now);
             var finish = now.AddSeconds(RecruitTiming.DurationSeconds(def.Type, count, speed));
-            locked.RecruitType = def.Type;
-            locked.RecruitCount = count;
-            locked.RecruitFinishAt = finish;
+            var row = new RecruitEntity
+            {
+                CityId = locked.Id,
+                TroopType = def.Type,
+                Count = count,
+                FinishAt = finish
+            };
+            row.Id = await _orm.Insert(row).WithTransaction(transaction).ExecuteIdentityAsync(ct);
             await UpdateCityAsync(transaction, locked, ct);
             city.Grain = locked.Grain;
             city.Wood = locked.Wood;
@@ -100,20 +107,29 @@ public sealed class ArmyService
             city.Infantry = locked.Infantry;
             city.Archer = locked.Archer;
             city.Cavalry = locked.Cavalry;
-            city.RecruitType = locked.RecruitType;
-            city.RecruitCount = locked.RecruitCount;
-            city.RecruitFinishAt = locked.RecruitFinishAt;
-            return finish;
+            city.ExtraRecruitSlots = locked.ExtraRecruitSlots;
+            return row;
         }, cancellationToken);
 
         _jobs.Schedule<CompleteRecruitJob>(
-            job => job.Execute(city.Id, def.Type, count),
-            UtcSchedule.At(finishAt));
+            job => job.Execute(city.Id, planned.Id),
+            UtcSchedule.At(planned.FinishAt));
         await _daily.AddProgressAsync(city.Id, DailyCatalog.Recruit, count, cancellationToken);
         return await BuildOverviewAsync(city, cancellationToken);
     }
 
-    public async Task CompleteRecruitAsync(long cityId, string troopType, int count, CancellationToken cancellationToken)
+    public Task CompleteRecruitAsync(long cityId, string troopType, int count, CancellationToken cancellationToken) =>
+        CompleteRecruitCoreAsync(cityId, null, troopType, count, cancellationToken);
+
+    public Task CompleteRecruitAsync(long cityId, long recruitId, CancellationToken cancellationToken) =>
+        CompleteRecruitCoreAsync(cityId, recruitId, null, 0, cancellationToken);
+
+    private async Task CompleteRecruitCoreAsync(
+        long cityId,
+        long? recruitId,
+        string? troopType,
+        int count,
+        CancellationToken cancellationToken)
     {
         CityEntity? city;
         string? completedType = null;
@@ -122,19 +138,38 @@ public sealed class ArmyService
         {
             city = await CityRowLock.RunAsync(_orm, cityId, async (transaction, locked, ct) =>
             {
-                if (locked.RecruitFinishAt is null
-                    || string.IsNullOrWhiteSpace(locked.RecruitType)
-                    || !locked.RecruitType.Equals(troopType, StringComparison.OrdinalIgnoreCase)
-                    || locked.RecruitCount != count)
+                RecruitEntity? row;
+                if (recruitId is long id)
+                {
+                    row = await _orm.Select<RecruitEntity>()
+                        .WithTransaction(transaction)
+                        .Where(r => r.CityId == cityId && r.Id == id)
+                        .FirstAsync(ct);
+                }
+                else
+                {
+                    row = await _orm.Select<RecruitEntity>()
+                        .WithTransaction(transaction)
+                        .Where(r =>
+                            r.CityId == cityId
+                            && r.TroopType == troopType
+                            && r.Count == count)
+                        .OrderBy(r => r.FinishAt)
+                        .FirstAsync(ct);
+                }
+
+                if (row is null)
                 {
                     return locked;
                 }
 
-                if (locked.RecruitFinishAt > DateTime.UtcNow.AddSeconds(2))
+                if (row.FinishAt > DateTime.UtcNow.AddSeconds(2))
                 {
+                    var pendingId = row.Id;
+                    var pendingFinish = row.FinishAt;
                     _jobs.Schedule<CompleteRecruitJob>(
-                        job => job.Execute(cityId, troopType, count),
-                        UtcSchedule.At(locked.RecruitFinishAt.Value));
+                        job => job.Execute(cityId, pendingId),
+                        UtcSchedule.At(pendingFinish));
                     return locked;
                 }
 
@@ -145,16 +180,19 @@ public sealed class ArmyService
                 var barracksLevel = CityStats.BuildingLevel(rows, "barracks");
                 var cap = InnerBuildingCatalog.TroopCap(barracksLevel);
                 var marching = await MarchingTroopsAsync(transaction, locked.Id, ct);
+                var others = await LoadRecruitsAsync(transaction, locked.Id, ct);
+                var otherQueued = others.Where(r => r.Id != row.Id).Sum(r => r.Count);
                 var stationed = CityStats.Troops(locked);
-                var room = Math.Max(0, cap - marching.Total);
+                var room = Math.Max(0, cap - marching.Total - otherQueued);
                 CityStats.ApplyTroops(
                     locked,
-                    CityStats.FitCap(stationed.Add(locked.RecruitType, locked.RecruitCount), room));
-                completedType = locked.RecruitType;
-                completedCount = locked.RecruitCount;
-                locked.RecruitType = null;
-                locked.RecruitCount = 0;
-                locked.RecruitFinishAt = null;
+                    CityStats.FitCap(stationed.Add(row.TroopType, row.Count), room));
+                completedType = row.TroopType;
+                completedCount = row.Count;
+                await _orm.Delete<RecruitEntity>()
+                    .WithTransaction(transaction)
+                    .Where(r => r.Id == row.Id)
+                    .ExecuteAffrowsAsync(ct);
                 await UpdateCityAsync(transaction, locked, ct);
                 return locked;
             }, cancellationToken);
@@ -182,15 +220,12 @@ public sealed class ArmyService
 
     public async Task RecoverDueAsync(CancellationToken cancellationToken)
     {
-        var due = await _orm.Select<CityEntity>()
-            .Where(c => c.RecruitFinishAt != null && c.RecruitFinishAt <= DateTime.UtcNow && c.RecruitType != null)
+        var due = await _orm.Select<RecruitEntity>()
+            .Where(r => r.FinishAt <= DateTime.UtcNow)
             .ToListAsync(cancellationToken);
-        foreach (var city in due)
+        foreach (var row in due)
         {
-            if (!string.IsNullOrWhiteSpace(city.RecruitType))
-            {
-                await CompleteRecruitAsync(city.Id, city.RecruitType, city.RecruitCount, cancellationToken);
-            }
+            await CompleteRecruitAsync(row.CityId, row.Id, cancellationToken);
         }
     }
 
@@ -209,11 +244,13 @@ public sealed class ArmyService
             .Where(m => m.FromCityId == city.Id && m.Status == MarchStatus.Marching)
             .OrderBy(m => m.ArriveAt)
             .ToListAsync(cancellationToken);
-        RecruitQueueDto? queue = null;
-        if (city.RecruitFinishAt is { } finish && !string.IsNullOrWhiteSpace(city.RecruitType))
-        {
-            queue = new RecruitQueueDto(city.RecruitType, city.RecruitCount, finish);
-        }
+        var recruits = await _orm.Select<RecruitEntity>()
+            .Where(r => r.CityId == city.Id)
+            .OrderBy(r => r.FinishAt)
+            .ToListAsync(cancellationToken);
+        var queues = recruits
+            .Select(r => new RecruitQueueDto(r.TroopType, r.Count, r.FinishAt))
+            .ToList();
 
         return new ArmyOverviewDto(
             city.Id,
@@ -237,7 +274,9 @@ public sealed class ArmyService
             }).ToList(),
             TechBonuses.TroopPowerPercent(drillHallLevel),
             discountPercent,
-            queue);
+            queues.FirstOrDefault(),
+            queues,
+            QueueSlots.State(city, QueueKind.Recruit, queues.Count));
     }
 
     internal static MarchDto MapMarch(MarchEntity march, bool mine, bool includeTroops = true) =>
@@ -290,6 +329,15 @@ public sealed class ArmyService
             sum.Add(new TroopCount(row.Infantry, row.Archer, row.Cavalry)));
     }
 
+    private Task<List<RecruitEntity>> LoadRecruitsAsync(
+        System.Data.Common.DbTransaction transaction,
+        long cityId,
+        CancellationToken cancellationToken) =>
+        _orm.Select<RecruitEntity>()
+            .WithTransaction(transaction)
+            .Where(r => r.CityId == cityId)
+            .ToListAsync(cancellationToken);
+
     private Task<int> UpdateCityAsync(
         System.Data.Common.DbTransaction transaction,
         CityEntity city,
@@ -305,10 +353,7 @@ public sealed class ArmyService
                 c.Copper,
                 c.Infantry,
                 c.Archer,
-                c.Cavalry,
-                c.RecruitType,
-                c.RecruitCount,
-                c.RecruitFinishAt
+                c.Cavalry
             })
             .ExecuteAffrowsAsync(cancellationToken);
 }

@@ -140,10 +140,10 @@ public sealed class AllApiDataTests
         Assert.Equal(1960, upgrading.Data?.Resources.Copper);
         Assert.Equal(0, upgrading.Data?.Buildings.Single(b => b.Type == "palace").Level);
         Assert.Equal(BuildingStatus.Upgrading, upgrading.Data?.Buildings.Single(b => b.Type == "palace").Status);
-        Assert.Equal("queue", upgrading.Data?.Buildings.Single(b => b.Type == "house").BlockedReason);
+        Assert.Equal("prerequisite", upgrading.Data?.Buildings.Single(b => b.Type == "house").BlockedReason);
 
-        var (_, fieldBusy) = await api.Post<FieldsOverviewDto>("/api/fields/upgrade", new { fieldType = "farm" });
-        Assert.Equal(ErrorCodes.BuildingQueueBusy, fieldBusy.Code);
+        var (_, farmTooSoon) = await api.Post<FieldsOverviewDto>("/api/fields/upgrade", new { fieldType = "farm" });
+        Assert.Equal(ErrorCodes.BuildingPrerequisite, farmTooSoon.Code);
 
         await _factory.ForceCompleteBuildingsAsync();
         var (_, done) = await api.Get<BuildingsOverviewDto>("/api/buildings");

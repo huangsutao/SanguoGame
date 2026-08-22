@@ -45,13 +45,8 @@ public static class DependencyInjection
                     typeof(AllianceApplicationEntity),
                     typeof(DailyQuestEntity),
                     typeof(ItemEntity),
-                    typeof(BuffEntity));
-
-                orm.Ado.ExecuteNonQuery("""
-                    CREATE UNIQUE INDEX IF NOT EXISTS uk_building_city_queue
-                    ON sg_building (city_id)
-                    WHERE status = 1
-                    """);
+                    typeof(BuffEntity),
+                    typeof(RecruitEntity));
 
                 orm.Ado.ExecuteNonQuery("""
                     UPDATE sg_city
@@ -60,6 +55,53 @@ public static class DependencyInjection
                       AND NOT EXISTS (SELECT 1 FROM sg_building b WHERE b.city_id = sg_city.id)
                     """);
             }
+
+            orm.Ado.ExecuteNonQuery("""
+                DROP INDEX IF EXISTS uk_building_city_queue
+                """);
+
+            orm.Ado.ExecuteNonQuery("""
+                ALTER TABLE IF EXISTS sg_city
+                    ADD COLUMN IF NOT EXISTS extra_build_slots int NOT NULL DEFAULT 0,
+                    ADD COLUMN IF NOT EXISTS extra_field_slots int NOT NULL DEFAULT 0,
+                    ADD COLUMN IF NOT EXISTS extra_tech_slots int NOT NULL DEFAULT 0,
+                    ADD COLUMN IF NOT EXISTS extra_recruit_slots int NOT NULL DEFAULT 0
+                """);
+
+            orm.Ado.ExecuteNonQuery("""
+                CREATE TABLE IF NOT EXISTS sg_recruit (
+                    id bigserial PRIMARY KEY,
+                    city_id int8 NOT NULL,
+                    troop_type varchar(16) NOT NULL,
+                    count int NOT NULL,
+                    finish_at timestamp NOT NULL
+                )
+                """);
+
+            orm.Ado.ExecuteNonQuery("""
+                CREATE INDEX IF NOT EXISTS idx_recruit_city ON sg_recruit (city_id)
+                """);
+
+            orm.Ado.ExecuteNonQuery("""
+                INSERT INTO sg_recruit (city_id, troop_type, count, finish_at)
+                SELECT id, recruit_type, recruit_count, recruit_finish_at
+                FROM sg_city
+                WHERE recruit_type IS NOT NULL
+                  AND recruit_finish_at IS NOT NULL
+                  AND NOT EXISTS (
+                    SELECT 1 FROM sg_recruit r
+                    WHERE r.city_id = sg_city.id
+                      AND r.troop_type = sg_city.recruit_type
+                      AND r.count = sg_city.recruit_count
+                      AND r.finish_at = sg_city.recruit_finish_at
+                  )
+                """);
+
+            orm.Ado.ExecuteNonQuery("""
+                UPDATE sg_city
+                SET recruit_type = NULL, recruit_count = 0, recruit_finish_at = NULL
+                WHERE recruit_type IS NOT NULL OR recruit_finish_at IS NOT NULL
+                """);
 
             return orm;
         });

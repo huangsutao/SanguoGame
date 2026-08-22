@@ -12,6 +12,7 @@ const props = defineProps<{
   wallDefense?: number;
   trapBonus?: number;
   threatened?: boolean;
+  slotLine?: string;
 }>();
 
 const emit = defineEmits<{
@@ -87,6 +88,9 @@ function broken(ev: Event): void {
       <i v-if="mode === 'wall'" class="torch a"></i>
       <i v-if="mode === 'wall'" class="torch b"></i>
       <i v-for="n in 8" :key="n" class="firefly" :style="{ '--i': n }"></i>
+      <div v-if="slotLine" class="map-hud">
+        <span>{{ slotLine }}</span>
+      </div>
       <button
         v-for="plot in plots"
         :key="plot.item.type"
@@ -150,7 +154,7 @@ function broken(ev: Event): void {
       </div>
     </aside>
     <p v-else class="hint scene-tip">
-      {{ mode === "wall" ? "点选箭塔、城门或陷阱，可加固城防。" : "点选城中建筑，可查看效果并下令建造。" }}
+      {{ mode === "wall" ? "点选箭塔、城门或陷阱，可加固城防。与主殿、民居、仓库、兵营共用建造队列。" : "点选城中建筑，可查看效果并下令建造。建造与科技队列分开，默认各 5 条。" }}
     </p>
     <p v-if="mode === 'wall'" class="hint scene-tip">
       守城 {{ wallDefense ?? 0 }} · 陷阱加成 {{ Math.round((trapBonus ?? 0) * 100) }}%

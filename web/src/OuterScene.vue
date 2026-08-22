@@ -9,6 +9,7 @@ const props = defineProps<{
   busy?: boolean;
   nowMs: number;
   serverTime?: string;
+  slotLine?: string;
 }>();
 
 const emit = defineEmits<{
@@ -68,6 +69,9 @@ function broken(ev: Event): void {
       <i class="leaf a"></i>
       <i class="leaf b"></i>
       <i class="leaf c"></i>
+      <div v-if="slotLine" class="map-hud">
+        <span>{{ slotLine }}</span>
+      </div>
       <button
         v-for="plot in plots"
         :key="plot.item.type"
@@ -141,6 +145,6 @@ function broken(ev: Event): void {
         </button>
       </div>
     </aside>
-    <p v-else class="hint scene-tip">点选田地查看产出；可收数量会随时间在画面上增长。</p>
+    <p v-else class="hint scene-tip">点选田地查看产出；可收数量会随时间在画面上增长。资源队列默认 5 条，可在商城扩充。</p>
   </div>
 </template>

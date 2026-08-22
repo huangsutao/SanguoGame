@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import type { WorldDto } from "./api/types";
 import { markerArt } from "./art";
-import { dayPhase, dayPhaseLabel, remainText } from "./format";
+import { dayPhase, dayPhaseLabel, incomingOnCity, remainText } from "./format";
 
 const props = withDefaults(
   defineProps<{ world: WorldDto; active?: boolean }>(),
@@ -17,7 +17,7 @@ const originX = ref(props.world.origin.x);
 const originY = ref(props.world.origin.y);
 const scale = ref(10);
 const hover = ref("");
-const nowClock = ref(Date.now());
+const hudClock = ref(Date.now());
 let dragging = false;
 let lastX = 0;
 let lastY = 0;
@@ -28,6 +28,7 @@ let snapshotAt = Date.now();
 let snapshotServer = Date.parse(props.world.serverTime);
 let pointerMx = -1;
 let pointerMy = -1;
+let lastHud = 0;
 
 const sprites = {
   city: loadSprite(markerArt.city),
@@ -39,17 +40,15 @@ const sprites = {
   cart: loadSprite(markerArt.cart)
 };
 
-const phase = computed(() => dayPhase(nowClock.value));
-const weather = computed(() => mapWeather(nowClock.value));
+const phase = computed(() => dayPhase(hudClock.value));
+const weather = computed(() => mapWeather(hudClock.value));
 const selfCity = computed(() => props.world.cities.find((item) => item.owner === "self") ?? null);
 const incoming = computed(() => {
   const home = selfCity.value;
   if (!home) {
     return [];
   }
-  return props.world.marches.filter(
-    (item) => !item.mine && item.toX === home.x && item.toY === home.y && item.status === "marching"
-  );
+  return incomingOnCity(props.world.marches, home.id);
 });
 const liveCount = computed(
   () => (props.world.marches?.length ?? 0) + (props.world.transports?.length ?? 0)
@@ -453,7 +452,11 @@ function draw(): void {
     for (const item of props.world.outposts) {
       const p = toScreen(item.x, item.y);
       const left =
-        item.kind === "roaming" && item.expiresAt ? ` ·${remainText(item.expiresAt, now)}` : "";
+        item.kind === "roaming" && item.expiresAt
+          ? Date.parse(item.expiresAt) - now <= 0
+            ? " ·即将消失"
+            : ` ·${remainText(item.expiresAt, now)}`
+          : "";
       drawLabel(`${item.name}${left}`, p.sx, p.sy, item.kind === "roaming" ? "#e08a7a" : "#d8c8a4");
     }
     for (const item of props.world.markets ?? []) {
@@ -543,7 +546,11 @@ function nearest(
   for (const item of props.world.outposts) {
     let label = item.name;
     if (item.kind === "roaming" && item.expiresAt) {
-      label = `${item.name}（${remainText(item.expiresAt, serverNow())}后消失）`;
+      const left = Date.parse(item.expiresAt) - serverNow();
+      label =
+        left <= 0
+          ? `${item.name}（即将消失）`
+          : `${item.name}（${remainText(item.expiresAt, serverNow())}后消失）`;
     }
     if (item.garrison <= 0) {
       label = `${label}（已打空）`;
@@ -565,7 +572,10 @@ function updateHover(): void {
   const x = originX.value + (pointerMx - el.width / 2) / scale.value;
   const y = originY.value + (pointerMy - el.height / 2) / scale.value;
   const found = nearest(x, y);
-  hover.value = found ? found.label : `${Math.round(x)}, ${Math.round(y)}`;
+  const next = found ? found.label : `${Math.round(x)}, ${Math.round(y)}`;
+  if (hover.value !== next) {
+    hover.value = next;
+  }
 }
 
 function hit(clientX: number, clientY: number): void {
@@ -648,7 +658,11 @@ function stopLoop(): void {
 }
 
 function loop(): void {
-  nowClock.value = Date.now();
+  const t = Date.now();
+  if (t - lastHud >= 1000) {
+    lastHud = t;
+    hudClock.value = t;
+  }
   draw();
   if (props.active) {
     raf = requestAnimationFrame(loop);

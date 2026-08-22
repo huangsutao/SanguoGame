@@ -16,18 +16,30 @@ export const troopLabel: Record<string, string> = {
 
 export type DayPhase = "dawn" | "day" | "dusk" | "night";
 
-export function remainText(finishAt: string | undefined, nowMs: number): string {
+export function remainText(finishAt: string | undefined, nowMs: number, overdue = "即将完成"): string {
   if (!finishAt) {
     return "";
   }
-  const ms = Date.parse(finishAt) - nowMs;
+  const end = Date.parse(finishAt);
+  if (!Number.isFinite(end)) {
+    return "";
+  }
+  const ms = end - nowMs;
   if (ms <= 0) {
-    return "即将完成";
+    return overdue;
   }
   const sec = Math.ceil(ms / 1000);
   const m = Math.floor(sec / 60);
   const s = sec % 60;
   return m > 0 ? `${m}分${s}秒` : `${s}秒`;
+}
+
+export function calibratedNow(serverTime: string | undefined, capturedAt: number, nowMs: number): number {
+  const parsed = serverTime ? Date.parse(serverTime) : NaN;
+  if (!Number.isFinite(parsed)) {
+    return nowMs;
+  }
+  return parsed + (nowMs - capturedAt);
 }
 
 export function blockedText(reason?: string): string {
@@ -79,15 +91,28 @@ export function costParts(next?: BuildingCostDto): { key: (typeof resourceKeys)[
     .filter((item) => item.amount > 0);
 }
 
-export function liveFieldPending(field: FieldItemDto, nowMs: number): number {
-  if (field.level < 1 || field.ratePerHour <= 0) {
+export function liveFieldPending(field: FieldItemDto, nowMs: number, snapshotMs?: number): number {
+  if (field.level < 1 || field.fieldCap <= 0) {
     return 0;
   }
-  if (field.lastCollectedAt) {
-    const elapsed = Math.max(0, (nowMs - Date.parse(field.lastCollectedAt)) / 1000);
-    return Math.min(field.fieldCap, Math.floor((field.ratePerHour * elapsed) / 3600));
+  const base = Math.max(0, field.pending);
+  if (field.ratePerHour <= 0 || snapshotMs == null || !Number.isFinite(snapshotMs)) {
+    return Math.min(field.fieldCap, base);
   }
-  return Math.min(field.fieldCap, Math.max(0, field.pending));
+  const elapsedSec = Math.max(0, nowMs - snapshotMs) / 1000;
+  const extra = Math.floor((field.ratePerHour * elapsedSec) / 3600);
+  return Math.min(field.fieldCap, base + extra);
+}
+
+export function incomingOnCity(marches: { mine: boolean; status: string; targetType: string; targetId: number; kind?: string }[], cityId: number) {
+  return marches.filter(
+    (item) =>
+      !item.mine &&
+      item.status === "marching" &&
+      item.targetType === "city" &&
+      item.targetId === cityId &&
+      item.kind !== "scout"
+  );
 }
 
 export function dayPhase(nowMs = Date.now()): DayPhase {

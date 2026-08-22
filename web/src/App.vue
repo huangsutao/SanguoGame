@@ -79,7 +79,7 @@ import CityScene from "./CityScene.vue";
 import OuterScene from "./OuterScene.vue";
 import { resourceArt, resourceKeys, troopPortrait } from "./art";
 import { gameAudio } from "./audio";
-import { remainText as formatRemain, resourceLabel, troopLabel } from "./format";
+import { calibratedNow, incomingOnCity, remainText as formatRemain, resourceLabel, troopLabel } from "./format";
 
 const loading = ref(true);
 const busy = ref(false);
@@ -112,6 +112,7 @@ const inviteName = ref("");
 const allianceNoticeDraft = ref("");
 const selected = ref<MarchTarget | null>(null);
 const nowMs = ref(Date.now());
+const clock = ref({ clientAt: Date.now(), serverAt: Date.now() });
 const recruitType = ref("infantry");
 const recruitCount = ref(10);
 const marchInf = ref(20);
@@ -274,14 +275,14 @@ function rewardParts(reward: { grain: number; wood: number; iron: number; copper
     .filter((item) => item.amount > 0);
 }
 
+const syncedNow = computed(() => clock.value.serverAt + (nowMs.value - clock.value.clientAt));
+
 const incomingMarches = computed(() => {
   const city = session.value?.city;
   if (!city || !world.value) {
     return [];
   }
-  return world.value.marches.filter(
-    (item) => !item.mine && item.toX === city.x && item.toY === city.y && item.status === "marching"
-  );
+  return incomingOnCity(world.value.marches, city.id);
 });
 
 const allianceRoleLabel: Record<string, string> = {
@@ -301,6 +302,10 @@ let hub: HubConnection | null = null;
 let tick: number | undefined;
 let lastWorldRefresh = 0;
 
+function unlockAudio(): void {
+  gameAudio.unlock();
+}
+
 function fail(err: unknown): void {
   error.value = err instanceof ApiError || err instanceof Error ? err.message : "操作失败";
 }
@@ -318,7 +323,15 @@ function queueName(type?: string): string {
 }
 
 function remainText(finishAt?: string): string {
-  return formatRemain(finishAt, nowMs.value);
+  return formatRemain(finishAt, syncedNow.value);
+}
+
+function markClock(serverTime?: string): void {
+  const clientAt = Date.now();
+  clock.value = {
+    clientAt,
+    serverAt: calibratedNow(serverTime, clientAt, clientAt)
+  };
 }
 
 function setCityZone(zone: "inner" | "outer" | "wall"): void {
@@ -367,7 +380,7 @@ function protectionText(until?: string): string {
   if (!until) {
     return "";
   }
-  const ms = Date.parse(until) - nowMs.value;
+  const ms = Date.parse(until) - syncedNow.value;
   if (ms <= 0) {
     return "";
   }
@@ -379,6 +392,7 @@ async function loadCity(): Promise<void> {
   overview.value = inner;
   fields.value = outer;
   walls.value = wall;
+  markClock(outer.serverTime ?? inner.serverTime ?? wall.serverTime);
 }
 
 async function loadArmy(): Promise<void> {
@@ -387,6 +401,7 @@ async function loadArmy(): Promise<void> {
 
 async function loadWorld(): Promise<void> {
   world.value = await fetchWorld();
+  markClock(world.value.serverTime);
 }
 
 async function loadMarkets(): Promise<void> {
@@ -556,10 +571,9 @@ onMounted(async () => {
     daily.value = null;
     shop.value = null;
     void disconnectHub();
-    gameAudio.setAmbient("login");
   });
 
-  window.addEventListener("pointerdown", () => gameAudio.unlock(), { once: true });
+  window.addEventListener("pointerdown", unlockAudio, { once: true });
   syncAmbient();
 
   tick = window.setInterval(() => {
@@ -588,6 +602,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   setUnauthorizedHandler(null);
+  window.removeEventListener("pointerdown", unlockAudio);
   if (tick !== undefined) {
     window.clearInterval(tick);
   }
@@ -756,6 +771,7 @@ async function submitCollect(type?: string): Promise<void> {
       queue: fields.value?.queue,
       fields: result.data.fields
     };
+    markClock(result.data.serverTime);
     if (overview.value) {
       overview.value = { ...overview.value, resources: result.data.resources, resourceCap: result.data.resourceCap };
     }
@@ -1263,7 +1279,7 @@ async function submitLogout(): Promise<void> {
               mode="inner"
               :items="overview.buildings"
               :busy="busy"
-              :now-ms="nowMs"
+              :now-ms="syncedNow"
               @upgrade="submitUpgrade"
               @pick="gameAudio.play('click')"
             />
@@ -1271,7 +1287,8 @@ async function submitLogout(): Promise<void> {
               v-else-if="cityZone === 'outer' && fields"
               :items="fields.fields"
               :busy="busy"
-              :now-ms="nowMs"
+              :now-ms="syncedNow"
+              :server-time="fields.serverTime"
               @upgrade="submitFieldUpgrade"
               @collect="submitCollect"
               @pick="gameAudio.play('click')"
@@ -1281,7 +1298,7 @@ async function submitLogout(): Promise<void> {
               mode="wall"
               :items="walls.walls"
               :busy="busy"
-              :now-ms="nowMs"
+              :now-ms="syncedNow"
               :wall-defense="walls.wallDefense"
               :trap-bonus="walls.trapBonus"
               @upgrade="submitWallUpgrade"

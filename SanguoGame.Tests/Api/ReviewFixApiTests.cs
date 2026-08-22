@@ -54,7 +54,7 @@ public sealed class ReviewFixApiTests
         var tag = Guid.NewGuid().ToString("N")[..6];
         var (_, created) = await leader.Post<AllianceDetailDto>("/api/alliances", new { name = "满" + tag });
         Assert.Equal(0, created.Code);
-        await _factory.FillAllianceMembersAsync(created.Data!.Id, AllianceRules.MaxMembers - 3);
+        await _factory.FillAllianceMembersAsync(created.Data!.Id, AllianceRules.MaxMembers - 2);
 
         var first = new ApiClient(_factory.CreateJsonClient());
         await first.RegisterCityAsync("a");

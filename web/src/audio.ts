@@ -31,17 +31,18 @@ class GameAudio {
   muted = readMuted();
 
   unlock(): void {
-    if (this.unlocked) {
-      this.setMuted(this.muted);
-      return;
-    }
     const ctx = this.ensure();
     if (ctx.state === "suspended") {
       void ctx.resume();
     }
+    const first = !this.unlocked;
     this.unlocked = true;
-    this.setMuted(this.muted);
-    this.startAmbient(this.ambient);
+    if (this.master) {
+      this.master.gain.value = this.muted ? 0 : 1;
+    }
+    if (first && !this.muted) {
+      this.startAmbient(this.ambient);
+    }
   }
 
   setMuted(muted: boolean): void {
@@ -74,11 +75,11 @@ class GameAudio {
   }
 
   play(name: SfxName): void {
-    if (this.muted) {
+    if (this.muted || !this.unlocked) {
       return;
     }
     const ctx = this.ensure();
-    if (!this.unlocked || ctx.state === "suspended") {
+    if (ctx.state === "suspended") {
       return;
     }
     const dest = this.sfx ?? ctx.destination;
@@ -338,7 +339,7 @@ function padLoop(ctx: AudioContext, dest: AudioNode, notes: number[], gain: numb
         window.clearTimeout(id);
         window.clearInterval(id);
       });
-      oscs.forEach((osc) => osc.stop());
+      oscs.forEach((osc) => safeStop(osc));
     }
   };
 }
@@ -361,7 +362,7 @@ function wind(ctx: AudioContext, dest: AudioNode, gain: number, cutoff: number):
   filter.connect(g);
   g.connect(dest);
   src.start();
-  return { stop: () => src.stop() };
+  return { stop: () => safeStop(src) };
 }
 
 function chirpLoop(ctx: AudioContext, dest: AudioNode, every: number): AmbientHandles {
@@ -373,9 +374,14 @@ function chirpLoop(ctx: AudioContext, dest: AudioNode, every: number): AmbientHa
     blip(ctx, dest, now, 1400 + Math.random() * 600, 0.08, 0.018, "sine");
     blip(ctx, dest, now + 0.07, 1800 + Math.random() * 400, 0.07, 0.014, "sine");
   };
+  const first = window.setTimeout(tick, 800);
   const id = window.setInterval(tick, every * 1000);
-  window.setTimeout(tick, 800);
-  return { stop: () => window.clearInterval(id) };
+  return {
+    stop: () => {
+      window.clearTimeout(first);
+      window.clearInterval(id);
+    }
+  };
 }
 
 function distantDrum(ctx: AudioContext, dest: AudioNode): AmbientHandles {
@@ -387,6 +393,14 @@ function distantDrum(ctx: AudioContext, dest: AudioNode): AmbientHandles {
   };
   const id = window.setInterval(tick, 5200);
   return { stop: () => window.clearInterval(id) };
+}
+
+function safeStop(node: OscillatorNode | AudioBufferSourceNode): void {
+  try {
+    node.stop();
+  } catch {
+    // already stopped
+  }
 }
 
 function join(...parts: AmbientHandles[]): AmbientHandles {

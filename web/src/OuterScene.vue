@@ -8,6 +8,7 @@ const props = defineProps<{
   items: FieldItemDto[];
   busy?: boolean;
   nowMs: number;
+  serverTime?: string;
 }>();
 
 const emit = defineEmits<{
@@ -26,10 +27,15 @@ const layout: Record<string, { x: number; y: number; w: number; z: number }> = {
 const selectedType = ref<string | null>(null);
 const phase = computed(() => dayPhase(props.nowMs));
 
+const snapshotMs = computed(() => {
+  const parsed = props.serverTime ? Date.parse(props.serverTime) : NaN;
+  return Number.isFinite(parsed) ? parsed : undefined;
+});
+
 const plots = computed(() =>
   props.items.map((item) => {
     const pos = layout[item.type] ?? { x: 50, y: 50, w: 13, z: 3 };
-    const pending = liveFieldPending(item, props.nowMs);
+    const pending = liveFieldPending(item, props.nowMs, snapshotMs.value);
     return { item, pos, pending, fill: item.fieldCap > 0 ? Math.min(100, (pending / item.fieldCap) * 100) : 0 };
   })
 );
